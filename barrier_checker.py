@@ -1,21 +1,18 @@
 """
 Barrier Checker for Structured Notes
 Automatically detects KO/KI events based on current prices
-Implements conversion logic for KI notes
+Implements product-specific logic for FCN and Phoenix notes
 """
 
 from datetime import date
 from typing import Dict, List, Tuple
 
 
-def check_ko_barrier(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
+def check_ko_barrier_fcn(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
     """
-    Check if note has hit KO barrier
+    Check KO for FCN products
     
-    KO Logic: ALL underlyings must exceed their KO prices
-    
-    Returns:
-        Tuple of (ko_occurred, message)
+    FCN KO Logic: ALL underlyings must exceed their KO prices
     """
     if today is None:
         today = date.today()
@@ -36,7 +33,7 @@ def check_ko_barrier(note: Dict, underlyings: List[Dict], today: date = None) ->
     if len(underlyings_with_prices) < len(underlyings_with_ko):
         return False, "Not all underlyings have current prices"
     
-    # Check KO condition: ALL underlyings must be >= KO price
+    # FCN: ALL underlyings must be >= KO price
     all_above_ko = True
     ko_details = []
     
@@ -48,19 +45,71 @@ def check_ko_barrier(note: Dict, underlyings: List[Dict], today: date = None) ->
             all_above_ko = False
     
     if all_above_ko:
-        return True, "KO triggered! All underlyings above KO barriers"
+        return True, "FCN KO: All underlyings above KO barriers"
     else:
         return False, "KO not triggered"
 
 
-def check_ki_barrier(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str, str]:
+def check_ko_barrier_phoenix(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
     """
-    Check if note has hit KI barrier
+    Check KO for Phoenix/Autocall products
     
-    KI Logic: ANY ONE underlying at or below KI price
+    Phoenix KO Logic: Worst Performing Share (WPS) must exceed its KO price
+    """
+    if today is None:
+        today = date.today()
+    
+    # Only check if in observation period
+    if note['current_status'] not in ['Alive', 'Not Observed Yet']:
+        return False, "Note not in observation period"
+    
+    # Get underlyings with both strike and current prices
+    underlyings_with_prices = [u for u in underlyings if u['last_close_price'] and u['strike_price'] and u.get('ko_price')]
+    
+    if not underlyings_with_prices:
+        return False, "No underlyings with complete price data"
+    
+    # Find Worst Performing Share (lowest performance %)
+    worst_performance = float('inf')
+    worst_underlying = None
+    
+    for u in underlyings_with_prices:
+        performance = u['last_close_price'] / u['strike_price']
+        if performance < worst_performance:
+            worst_performance = performance
+            worst_underlying = u
+    
+    if not worst_underlying:
+        return False, "Could not determine worst performing share"
+    
+    # Phoenix: Check if WPS >= KO barrier
+    if worst_underlying['last_close_price'] >= worst_underlying['ko_price']:
+        return True, f"Phoenix KO: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} >= KO ${worst_underlying['ko_price']:.2f}"
+    else:
+        return False, f"KO not triggered: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} < KO ${worst_underlying['ko_price']:.2f}"
+
+
+def check_ko_barrier(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
+    """
+    Check KO barrier - routes to product-specific logic
     
     Returns:
-        Tuple of (ki_occurred, which_underlying, message)
+        Tuple of (ko_occurred, message)
+    """
+    product_type = note.get('type_of_structured_product', 'FCN')
+    
+    if product_type == 'Phoenix':
+        return check_ko_barrier_phoenix(note, underlyings, today)
+    else:
+        # FCN, WOFCN, ACCU, DECU, etc. use FCN logic (ALL underlyings)
+        return check_ko_barrier_fcn(note, underlyings, today)
+
+
+def check_ki_barrier_fcn(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str, str]:
+    """
+    Check KI for FCN products
+    
+    FCN KI Logic: ANY ONE underlying at or below KI price
     """
     if today is None:
         today = date.today()
@@ -99,18 +148,79 @@ def check_ki_barrier(note: Dict, underlyings: List[Dict], today: date = None) ->
     return False, None, "KI not triggered"
 
 
-def check_conversion(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
+def check_ki_barrier_phoenix(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str, str]:
     """
-    Check if KI note should be converted to shares
+    Check KI for Phoenix products
     
-    Conversion Logic:
-    - ONLY check on Final Valuation Date (not before)
-    - Note must be Knocked In (KI event occurred during tenor)
-    - Lowest Performing Share < Strike Price on final date
-    - Shares delivered at Strike Price (not KI price)
+    Phoenix KI Logic: Worst Performing Share at or below KI price (European - final date only)
+    """
+    if today is None:
+        today = date.today()
+    
+    # Only check if in observation period
+    if note['current_status'] not in ['Alive', 'Not Observed Yet']:
+        return False, None, "Note not in observation period"
+    
+    # Phoenix is typically EKI - only check on final date
+    from datetime import datetime
+    try:
+        final_val = datetime.strptime(note['final_valuation_date'], '%Y-%m-%d').date()
+        if today != final_val:
+            return False, None, "Phoenix: KI only checked on final date"
+    except:
+        pass
+    
+    # Get underlyings with prices
+    underlyings_with_prices = [u for u in underlyings if u['last_close_price'] and u['strike_price'] and u.get('ki_price')]
+    
+    if not underlyings_with_prices:
+        return False, None, "No underlyings with complete price data"
+    
+    # Find Worst Performing Share
+    worst_performance = float('inf')
+    worst_underlying = None
+    
+    for u in underlyings_with_prices:
+        performance = u['last_close_price'] / u['strike_price']
+        if performance < worst_performance:
+            worst_performance = performance
+            worst_underlying = u
+    
+    if not worst_underlying:
+        return False, None, "Could not determine worst performing share"
+    
+    # Check if WPS <= KI barrier
+    if worst_underlying['last_close_price'] <= worst_underlying['ki_price']:
+        return True, worst_underlying['underlying_ticker'], f"Phoenix KI: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} <= KI ${worst_underlying['ki_price']:.2f}"
+    else:
+        return False, None, f"KI not triggered: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} > KI ${worst_underlying['ki_price']:.2f}"
+
+
+def check_ki_barrier(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str, str]:
+    """
+    Check KI barrier - routes to product-specific logic
     
     Returns:
-        Tuple of (should_convert, message)
+        Tuple of (ki_occurred, which_underlying, message)
+    """
+    product_type = note.get('type_of_structured_product', 'FCN')
+    
+    if product_type == 'Phoenix':
+        return check_ki_barrier_phoenix(note, underlyings, today)
+    else:
+        # FCN and other products use FCN logic (ANY ONE underlying)
+        return check_ki_barrier_fcn(note, underlyings, today)
+
+
+def check_conversion_fcn(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
+    """
+    Check conversion for FCN products
+    
+    FCN Conversion Logic:
+    - Only on Final Valuation Date
+    - Must be Knocked In
+    - Worst Performing Share < Strike Price
+    - Convert at Strike Price
     """
     if today is None:
         today = date.today()
@@ -147,12 +257,77 @@ def check_conversion(note: Dict, underlyings: List[Dict], today: date = None) ->
     if not worst_underlying:
         return False, "Could not determine worst performing underlying"
     
-    # Check if worst performing is below strike price
-    # Conversion happens at strike price (shares = notional / strike)
+    # FCN: Check if WPS < Strike Price
     if worst_underlying['last_close_price'] < worst_underlying['strike_price']:
-        return True, f"Converted: LPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} < Strike ${worst_underlying['strike_price']:.2f} → Physical delivery at strike"
+        return True, f"FCN Converted: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} < Strike ${worst_underlying['strike_price']:.2f}"
     else:
-        return False, f"Cash settlement: LPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} >= Strike ${worst_underlying['strike_price']:.2f}"
+        return False, f"Cash settlement: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} >= Strike ${worst_underlying['strike_price']:.2f}"
+
+
+def check_conversion_phoenix(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
+    """
+    Check conversion for Phoenix products
+    
+    Phoenix Conversion Logic:
+    - Only on Final Valuation Date
+    - Must be Knocked In
+    - WPS < Put Strike (stored as strike_price in database)
+    - For Phoenix, strike_price field contains the Put Strike (e.g., 74.86% level)
+    """
+    if today is None:
+        today = date.today()
+    
+    # Must be Knocked In first
+    if note['current_status'] != 'Knocked In':
+        return False, "Not a Knocked In note"
+    
+    # Only check on final valuation date
+    from datetime import datetime
+    try:
+        final_val = datetime.strptime(note['final_valuation_date'], '%Y-%m-%d').date()
+        if today != final_val:
+            return False, "Conversion only checked on final valuation date"
+    except:
+        return False, "Invalid final valuation date"
+    
+    # Find worst performing underlying
+    underlyings_with_prices = [u for u in underlyings if u['last_close_price'] and u['strike_price']]
+    
+    if not underlyings_with_prices:
+        return False, "No underlyings with complete price data"
+    
+    worst_performance = float('inf')
+    worst_underlying = None
+    
+    for u in underlyings_with_prices:
+        performance = u['last_close_price'] / u['spot_price']  # Use spot as 100% reference
+        if performance < worst_performance:
+            worst_performance = performance
+            worst_underlying = u
+    
+    if not worst_underlying:
+        return False, "Could not determine worst performing share"
+    
+    # Phoenix: Check if WPS < Put Strike (strike_price field)
+    if worst_underlying['last_close_price'] < worst_underlying['strike_price']:
+        return True, f"Phoenix Converted: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} < Put Strike ${worst_underlying['strike_price']:.2f}"
+    else:
+        return False, f"Cash settlement: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} >= Put Strike ${worst_underlying['strike_price']:.2f}"
+
+
+def check_conversion(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
+    """
+    Check conversion - routes to product-specific logic
+    
+    Returns:
+        Tuple of (should_convert, message)
+    """
+    product_type = note.get('type_of_structured_product', 'FCN')
+    
+    if product_type == 'Phoenix':
+        return check_conversion_phoenix(note, underlyings, today)
+    else:
+        return check_conversion_fcn(note, underlyings, today)
 
 
 def check_all_barriers(conn) -> Tuple[int, int, int, List[str]]:
