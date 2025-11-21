@@ -719,20 +719,14 @@ elif page == "View Notes":
         # Display results
         st.write(f"Showing {len(filtered_df)} notes")
         
-        # Format display
-        # Update statuses
-        update_all_statuses(db.conn)
-        
-        # Reload data
-        all_notes = db.get_all_notes()
-        df_notes = pd.DataFrame(all_notes)
-        
-        # Apply filters again
-        filtered_df = df_notes.copy()
-        if selected_customer != "All Clients":
-            filtered_df = filtered_df[filtered_df['customer_name'] == selected_customer]
-        if selected_product != "All":
-            filtered_df = filtered_df[filtered_df['type_of_structured_product'] == selected_product]
+        # Optional: Update statuses button (for large datasets)
+        col1, col2, col3 = st.columns([1, 1, 3])
+        with col1:
+            if st.button("🔄 Refresh Statuses"):
+                with st.spinner("Updating statuses..."):
+                    update_all_statuses(db.conn)
+                    st.success("✅ Statuses updated!")
+                    st.rerun()
         
         # Calculate coupon columns for each note
         expected_coupons = []
