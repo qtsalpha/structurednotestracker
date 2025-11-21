@@ -670,63 +670,64 @@ elif page == "View Notes":
         
         # Global action buttons at top
         st.markdown("### 🔄 Global Actions")
-        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+        col1, col2, col3 = st.columns([1, 1, 2])
         
         with col1:
-            if st.button("🎯 Check Barriers", use_container_width=True, type="primary"):
-                progress_text = st.empty()
-                
-                try:
-                    progress_text.text("🔍 Checking KO/KI barriers and conversions...")
-                    ko_count, ki_count, conv_count, details = check_all_barriers(db.conn)
-                    progress_text.empty()
-                    
-                    if ko_count > 0 or ki_count > 0 or conv_count > 0:
-                        st.success(f"✅ Barrier check complete! KO: {ko_count} | KI: {ki_count} | Converted: {conv_count}")
-                        
-                        with st.expander("📋 View Barrier Events"):
-                            for detail in details:
-                                if "KO:" in detail:
-                                    st.error(detail)
-                                elif "KI:" in detail:
-                                    st.warning(detail)
-                                elif "Converted" in detail or "✅" in detail:
-                                    st.info(detail)
-                                else:
-                                    st.write(detail)
-                        
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.info("ℹ️ No barrier breaches detected")
-                except Exception as e:
-                    progress_text.empty()
-                    st.error(f"❌ Error checking barriers: {str(e)}")
-        
-        with col2:
-            if st.button("🔄 Refresh Statuses", use_container_width=True, type="secondary"):
+            if st.button("🔄 Refresh All", use_container_width=True, type="primary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                def update_status_progress(current, total, isin, status):
-                    progress_bar.progress(current / total)
-                    status_text.text(f"{current}/{total}: {isin} {status}")
-                
                 try:
-                    updated, failed = update_all_statuses(db.conn, progress_callback=update_status_progress)
+                    # Step 1: Check barriers (KO/KI/Conversion detection)
+                    status_text.text("🎯 Step 1/2: Checking barriers...")
+                    progress_bar.progress(0.25)
+                    
+                    ko_count, ki_count, conv_count, barrier_details = check_all_barriers(db.conn)
+                    
+                    # Step 2: Update all statuses (date-based transitions)
+                    progress_bar.progress(0.50)
+                    status_text.text("📅 Step 2/2: Updating statuses...")
+                    
+                    def update_progress(current, total, isin, status):
+                        progress = 0.50 + (0.50 * current / total)
+                        progress_bar.progress(progress)
+                        status_text.text(f"Step 2/2: {current}/{total} - {isin}")
+                    
+                    updated, status_failed = update_all_statuses(db.conn, progress_callback=update_progress)
+                    
+                    # Clear progress
                     progress_bar.empty()
                     status_text.empty()
                     
-                    st.success(f"✅ Updated {updated} note statuses!")
+                    # Show results
+                    st.success(f"✅ Refresh complete! Updated {updated} notes")
                     
-                    if failed:
-                        st.warning(f"⚠️ Failed to update {len(failed)} notes:")
+                    # Show barrier events
+                    if ko_count > 0 or ki_count > 0 or conv_count > 0:
+                        st.info(f"🎯 Barrier Events: KO: {ko_count} | KI: {ki_count} | Converted: {conv_count}")
+                        
+                        if barrier_details:
+                            with st.expander("📋 View Barrier Events"):
+                                for detail in barrier_details:
+                                    if "🔴 KO:" in detail:
+                                        st.error(detail)
+                                    elif "🟠 KI:" in detail:
+                                        st.warning(detail)
+                                    elif "✅" in detail:
+                                        st.info(detail)
+                                    else:
+                                        st.write(detail)
+                    
+                    # Show status update failures
+                    if status_failed:
+                        st.warning(f"⚠️ Failed to update {len(status_failed)} notes:")
                         with st.expander("View Failed ISINs"):
-                            for failure in failed:
+                            for failure in status_failed:
                                 st.error(f"❌ {failure}")
                     
                     time.sleep(1)
                     st.rerun()
+                    
                 except Exception as e:
                     progress_bar.empty()
                     status_text.empty()
