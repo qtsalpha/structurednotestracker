@@ -146,3 +146,5 @@ def export_notes_with_underlyings(db, notes: List[Dict]) -> pd.DataFrame:
     return pd.DataFrame(detailed_data)
 
 
+
+

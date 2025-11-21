@@ -127,7 +127,15 @@ def update_all_statuses(conn) -> int:
     cursor = conn.cursor()
     
     cursor.execute('SELECT id FROM structured_notes')
-    note_ids = [row[0] for row in cursor.fetchall()]
+    rows = cursor.fetchall()
+    
+    # Handle both SQLite (tuple) and PostgreSQL (dict) row types
+    note_ids = []
+    for row in rows:
+        if isinstance(row, dict):
+            note_ids.append(row['id'])
+        else:
+            note_ids.append(row[0])
     
     count = 0
     for note_id in note_ids:

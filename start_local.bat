@@ -50,3 +50,5 @@ REM Run Streamlit
 streamlit run app_new.py
 
 
+
+
