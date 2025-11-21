@@ -863,6 +863,29 @@ elif page == "Import from Excel":
                 if notes:
                     st.success(f"✅ Successfully parsed {len(notes)} notes")
                     
+                    # Check for duplicates
+                    existing_isins = {note.get('isin') for note in all_notes if note.get('isin')}
+                    import_isins = [note.get('isin') for note in notes if note.get('isin')]
+                    duplicates = [isin for isin in import_isins if isin in existing_isins]
+                    
+                    if duplicates:
+                        st.warning(f"⚠️ Found {len(duplicates)} duplicate ISINs in database:")
+                        with st.expander("View Duplicates"):
+                            for dup in set(duplicates):
+                                st.write(f"• {dup}")
+                        
+                        st.markdown("**Import Mode:**")
+                        import_mode = st.radio(
+                            "How to handle duplicates?",
+                            ["Skip duplicates (import only new ISINs)", 
+                             "Import all (allow duplicates)",
+                             "Cancel import"],
+                            key="import_mode"
+                        )
+                    else:
+                        st.success("✅ No duplicates detected - all ISINs are new")
+                        import_mode = "Import all (allow duplicates)"
+                    
                     # Show summary
                     st.subheader("📋 Import Summary")
                     
@@ -889,15 +912,28 @@ elif page == "Import from Excel":
                     
                     with col2:
                         if st.button("💾 Import All Notes", type="primary", use_container_width=True):
-                            progress_bar = st.progress(0)
-                            status_text = st.empty()
-                            
-                            imported_count = 0
-                            failed_count = 0
-                            failed_rows = []
-                            
-                            for idx, (note, underlyings) in enumerate(zip(notes, underlyings_list)):
-                                try:
+                            # Check import mode
+                            if 'import_mode' in locals() and import_mode == "Cancel import":
+                                st.error("❌ Import cancelled")
+                            else:
+                                progress_bar = st.progress(0)
+                                status_text = st.empty()
+                                
+                                imported_count = 0
+                                skipped_count = 0
+                                failed_count = 0
+                                failed_rows = []
+                                
+                                for idx, (note, underlyings) in enumerate(zip(notes, underlyings_list)):
+                                    # Check if should skip duplicates
+                                    if 'import_mode' in locals() and import_mode == "Skip duplicates (import only new ISINs)":
+                                        if note.get('isin') in existing_isins:
+                                            skipped_count += 1
+                                            status_text.text(f"Skipped duplicate: {note.get('isin', 'No ISIN')}")
+                                            progress_bar.progress((idx + 1) / len(notes))
+                                            continue
+                                    
+                                    try:
                                     # Reconnect to database for each import to avoid connection timeout
                                     try:
                                         db.conn.ping(reconnect=True)  # For MySQL
@@ -921,22 +957,25 @@ elif page == "Import from Excel":
                                 # Update progress
                                 progress_bar.progress((idx + 1) / len(notes))
                             
-                            progress_bar.empty()
-                            status_text.empty()
-                            
-                            # Show results
-                            if imported_count > 0:
-                                st.success(f"🎉 Successfully imported {imported_count} notes!")
-                            
-                            if failed_count > 0:
-                                st.warning(f"⚠️ Failed to import {failed_count} notes:")
-                                with st.expander("View Failed Imports"):
-                                    for error in failed_rows:
-                                        st.error(f"❌ {error}")
-                            
-                            if imported_count == len(notes):
-                                st.balloons()
-                                st.info("✅ All notes imported successfully! Go to 'View Notes' to see them.")
+                                progress_bar.empty()
+                                status_text.empty()
+                                
+                                # Show results
+                                if imported_count > 0:
+                                    st.success(f"🎉 Successfully imported {imported_count} notes!")
+                                
+                                if skipped_count > 0:
+                                    st.info(f"ℹ️ Skipped {skipped_count} duplicate ISINs")
+                                
+                                if failed_count > 0:
+                                    st.warning(f"⚠️ Failed to import {failed_count} notes:")
+                                    with st.expander("View Failed Imports"):
+                                        for error in failed_rows:
+                                            st.error(f"❌ {error}")
+                                
+                                if imported_count > 0:
+                                    st.balloons()
+                                    st.info("✅ Import complete! Go to 'View Notes' to see your notes.")
                 else:
                     st.warning("⚠️ No valid notes found in the Excel file")
         
