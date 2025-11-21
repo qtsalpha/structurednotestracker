@@ -81,7 +81,7 @@ def fetch_price_from_yahoo(ticker: str) -> Optional[float]:
         return None
 
 
-def update_all_prices(conn: sqlite3.Connection, delay: float = 0.2) -> Tuple[int, int]:
+def update_all_prices(conn, delay: float = 0.2) -> Tuple[int, int]:
     """
     Update all underlying prices from Yahoo Finance
     
@@ -136,11 +136,30 @@ def update_all_prices(conn: sqlite3.Connection, delay: float = 0.2) -> Tuple[int
         
         if price:
             # Update all rows with this ticker
-            cursor.execute('''
-                UPDATE note_underlyings
-                SET last_close_price = ?, last_price_update = CURRENT_TIMESTAMP
-                WHERE underlying_ticker = ?
-            ''', (price, ticker))
+            # Detect database type
+            try:
+                # Try to detect PostgreSQL
+                if hasattr(conn, 'get_backend_pid'):
+                    # PostgreSQL
+                    cursor.execute('''
+                        UPDATE note_underlyings
+                        SET last_close_price = %s, last_price_update = CURRENT_TIMESTAMP
+                        WHERE underlying_ticker = %s
+                    ''', (price, ticker))
+                else:
+                    # SQLite
+                    cursor.execute('''
+                        UPDATE note_underlyings
+                        SET last_close_price = ?, last_price_update = CURRENT_TIMESTAMP
+                        WHERE underlying_ticker = ?
+                    ''', (price, ticker))
+            except:
+                # Fallback to SQLite
+                cursor.execute('''
+                    UPDATE note_underlyings
+                    SET last_close_price = ?, last_price_update = CURRENT_TIMESTAMP
+                    WHERE underlying_ticker = ?
+                ''', (price, ticker))
             
             updated_count += cursor.rowcount
     

@@ -712,14 +712,25 @@ elif page == "View Notes":
         # Display results
         st.write(f"Showing {len(filtered_df)} notes")
         
-        # Optional: Update statuses button (for large datasets)
+        # Action buttons
         col1, col2, col3 = st.columns([1, 1, 3])
         with col1:
-            if st.button("🔄 Refresh Statuses"):
+            if st.button("🔄 Refresh Statuses", use_container_width=True):
                 with st.spinner("Updating statuses..."):
                     update_all_statuses(db.conn)
                     st.success("✅ Statuses updated!")
                     st.rerun()
+        with col2:
+            if st.button("💹 Update Prices", use_container_width=True):
+                with st.spinner("Fetching prices from Yahoo Finance... This may take a minute."):
+                    try:
+                        updated, errors = update_all_prices(db.conn, delay=0.2)
+                        st.success(f"✅ Updated {updated} prices!")
+                        if errors > 0:
+                            st.warning(f"⚠️ Failed to update {errors} tickers")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
         
         # Calculate coupon columns for each note
         expected_coupons = []
