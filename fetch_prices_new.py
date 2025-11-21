@@ -17,22 +17,54 @@ def clean_ticker_for_yahoo(ticker: str) -> Optional[str]:
     
     Examples:
         'TSLA' -> 'TSLA'
-        'AMZN UQ' -> 'AMZN'
-        'MSFT UW' -> 'MSFT'
+        'APPLE INC. (XNAS:AAPL)' -> 'AAPL'
+        'NVIDIA CORPORATION (XNAS:NVDA)' -> 'NVDA'
+        'ALIBABA GROUP HOLDING LIMITED (XHKG:9988)' -> '9988.HK'
+        '8316 JT' -> '8316.T'
+        'SOFTBANK GROUP CORP 9984 JT' -> '9984.T'
     """
     if not ticker:
         return None
     
-    # Clean up ticker
-    ticker = ticker.strip().upper()
+    ticker = ticker.strip()
+    
+    # Extract ticker from parentheses format: "COMPANY NAME (EXCHANGE:TICKER)"
+    if '(' in ticker and ')' in ticker:
+        # Extract content in parentheses
+        start = ticker.find('(')
+        end = ticker.find(')')
+        exchange_ticker = ticker[start+1:end]
+        
+        # Split by colon to get ticker
+        if ':' in exchange_ticker:
+            exchange, symbol = exchange_ticker.split(':', 1)
+            
+            # Handle different exchanges
+            if exchange == 'XHKG':  # Hong Kong
+                return f"{symbol}.HK"
+            elif exchange == 'NEOE':  # Toronto
+                return f"{symbol}.TO"
+            else:  # US exchanges (XNAS, XNYS, ARCX, etc.)
+                return symbol
+        else:
+            return exchange_ticker
+    
+    # Handle Japanese stocks: "8316 JT" or "SOFTBANK GROUP CORP 9984 JT"
+    if ' JT' in ticker.upper():
+        # Extract the number before JT
+        parts = ticker.upper().replace('JT', '').split()
+        for part in reversed(parts):
+            if part.isdigit():
+                return f"{part}.T"  # Tokyo Stock Exchange
+    
+    # Handle simple tickers with spaces (already clean)
+    ticker = ticker.upper()
     
     # Remove common suffixes
-    suffixes = ['UQ', 'UW', 'UN', 'UP', 'EQUITY']
+    suffixes = ['UQ', 'UW', 'UN', 'UP', 'EQUITY', 'US', 'EQUITY']
     for suffix in suffixes:
         if ticker.endswith(f' {suffix}'):
             ticker = ticker.replace(f' {suffix}', '')
-        elif ticker.endswith(suffix):
-            ticker = ticker[:-len(suffix)]
     
     # Remove any remaining spaces
     ticker = ticker.strip()
