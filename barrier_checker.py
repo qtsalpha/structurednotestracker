@@ -103,10 +103,14 @@ def check_conversion(note: Dict, underlyings: List[Dict], today: date = None) ->
     """
     Check if KI note should be converted to shares
     
-    Conversion Logic:
-    - Note must be Knocked In
+    Conversion Logic (based on FCN termsheet):
+    - Note must be Knocked In (KI event occurred)
     - Today >= Final Valuation Date (maturity)
-    - ANY underlying is below its strike price
+    - Lowest Performing Share < KI Price (typically 60-70% of strike)
+    
+    Note: Conversion uses KI barrier, NOT strike price!
+    - If LPS < KI barrier AND KI occurred → Physical delivery
+    - If LPS >= KI barrier OR no KI → Cash settlement at par
     
     Returns:
         Tuple of (should_convert, message)
@@ -127,26 +131,30 @@ def check_conversion(note: Dict, underlyings: List[Dict], today: date = None) ->
     except:
         return False, "Invalid final valuation date"
     
-    # Check if any underlying is below strike
-    underlyings_with_prices = [u for u in underlyings if u['last_close_price'] and u['strike_price']]
+    # Find the worst performing underlying (lowest % of strike)
+    underlyings_with_prices = [u for u in underlyings if u['last_close_price'] and u['strike_price'] and u['ki_price']]
     
     if not underlyings_with_prices:
-        return False, "No underlyings with both prices and strike"
+        return False, "No underlyings with complete price data"
     
-    conversion_details = []
-    any_below_strike = False
+    # Calculate performance for each underlying
+    worst_performance = float('inf')
+    worst_underlying = None
     
     for u in underlyings_with_prices:
-        if u['last_close_price'] < u['strike_price']:
-            conversion_details.append(f"{u['underlying_ticker']}: ${u['last_close_price']:.2f} < ${u['strike_price']:.2f} (Below Strike)")
-            any_below_strike = True
-        else:
-            conversion_details.append(f"{u['underlying_ticker']}: ${u['last_close_price']:.2f} >= ${u['strike_price']:.2f} (Above Strike)")
+        performance = u['last_close_price'] / u['strike_price']
+        if performance < worst_performance:
+            worst_performance = performance
+            worst_underlying = u
     
-    if any_below_strike:
-        return True, "Converted to shares: " + "; ".join(conversion_details)
+    if not worst_underlying:
+        return False, "Could not determine worst performing underlying"
+    
+    # Check if worst performing is below KI barrier
+    if worst_underlying['last_close_price'] < worst_underlying['ki_price']:
+        return True, f"Converted: LPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} < KI barrier ${worst_underlying['ki_price']:.2f}"
     else:
-        return False, "All underlyings above strike - cash settlement"
+        return False, f"Cash settlement: LPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} >= KI barrier ${worst_underlying['ki_price']:.2f}"
 
 
 def check_all_barriers(conn) -> Tuple[int, int, int, List[str]]:
