@@ -23,6 +23,7 @@ from payment_date_generator import generate_payment_dates, format_dates_for_stor
 from auth import check_password, show_logout_button
 from export_utils import prepare_notes_for_export, export_to_csv, export_to_excel, get_export_filename, export_notes_with_underlyings
 from import_utils import validate_excel_columns, parse_excel_to_notes, get_excel_template_dataframe
+from excel_templates import get_fcn_template, get_phoenix_template
 from barrier_checker import check_all_barriers
 import time
 
@@ -793,28 +794,47 @@ elif page == "Import from Excel":
     
     # Download template section
     st.subheader("📄 Step 1: Download Template")
-    st.write("Download the Excel template, fill in your data, then upload it below.")
+    st.write("Choose template based on product type:")
     
-    col1, col2 = st.columns([1, 3])
+    col1, col2, col3 = st.columns([1, 1, 2])
     
     with col1:
-        # Generate template
-        template_df = get_excel_template_dataframe()
-        template_excel = export_to_excel(template_df, sheet_name="Notes Template")
+        # FCN Template
+        fcn_template = get_fcn_template()
+        fcn_excel = export_to_excel(fcn_template, sheet_name="FCN Template")
         
         st.download_button(
-            label="📥 Download Excel Template",
-            data=template_excel,
-            file_name="structured_notes_import_template.xlsx",
+            label="📥 FCN Template",
+            data=fcn_excel,
+            file_name="fcn_import_template.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            use_container_width=True,
+            help="For FCN, WOFCN, ACCU, DECU products"
         )
     
     with col2:
-        st.caption("The template includes:")
-        st.caption("✅ All required columns with example data")
-        st.caption("✅ Support for up to 4 underlyings per note")
-        st.caption("✅ Proper date and number formatting")
+        # Phoenix Template
+        phoenix_template = get_phoenix_template()
+        phoenix_excel = export_to_excel(phoenix_template, sheet_name="Phoenix Template")
+        
+        st.download_button(
+            label="📥 Phoenix Template",
+            data=phoenix_excel,
+            file_name="phoenix_import_template.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help="For Phoenix/Autocall products with memory coupons"
+        )
+    
+    with col3:
+        st.caption("**FCN Template includes:**")
+        st.caption("✅ Simple KO/KI barriers")
+        st.caption("✅ Regular coupon schedule")
+        st.caption("")
+        st.caption("**Phoenix Template includes:**")
+        st.caption("✅ Step-down KO barriers")
+        st.caption("✅ Memory coupon rates")
+        st.caption("✅ Coupon barrier field")
     
     st.markdown("---")
     
