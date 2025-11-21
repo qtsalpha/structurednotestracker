@@ -320,6 +320,9 @@ class StructuredNotesDB:
         """Get a note with all its underlyings"""
         cursor = self.conn.cursor()
         
+        # Convert to Python int (in case it's numpy.int64 from pandas)
+        note_id = int(note_id)
+        
         # Get main note
         if self.db_type == 'postgresql':
             cursor.execute('SELECT * FROM structured_notes WHERE id = %s', (note_id,))
@@ -339,6 +342,8 @@ class StructuredNotesDB:
         return note
     
     def update_structured_note(self, note_id: int, note_data: Dict, underlyings: List[Dict]) -> bool:
+        # Convert to Python int (in case it's numpy.int64 from pandas)
+        note_id = int(note_id)
         """
         Update an existing structured note and its underlyings
         
@@ -447,6 +452,8 @@ class StructuredNotesDB:
             True if deleted successfully, False otherwise
         """
         try:
+            # Convert to Python int (in case it's numpy.int64 from pandas)
+            note_id = int(note_id)
             cursor = self.conn.cursor()
             
             # Delete underlyings and main note
