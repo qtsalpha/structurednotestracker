@@ -306,10 +306,11 @@ class StructuredNotesDB:
         """Get all structured notes, optionally filtered by customer"""
         cursor = self.conn.cursor()
         
-        placeholder = '%s' if self.db_type == 'postgresql' else '?'
-        
         if customer_name:
-            cursor.execute(f'SELECT * FROM structured_notes WHERE customer_name = {placeholder} ORDER BY trade_date DESC', (customer_name,))
+            if self.db_type == 'postgresql':
+                cursor.execute('SELECT * FROM structured_notes WHERE customer_name = %s ORDER BY trade_date DESC', (customer_name,))
+            else:
+                cursor.execute('SELECT * FROM structured_notes WHERE customer_name = ? ORDER BY trade_date DESC', (customer_name,))
         else:
             cursor.execute('SELECT * FROM structured_notes ORDER BY trade_date DESC')
         
@@ -319,14 +320,20 @@ class StructuredNotesDB:
         """Get a note with all its underlyings"""
         cursor = self.conn.cursor()
         
-        placeholder = '%s' if self.db_type == 'postgresql' else '?'
-        
         # Get main note
-        cursor.execute(f'SELECT * FROM structured_notes WHERE id = {placeholder}', (note_id,))
+        if self.db_type == 'postgresql':
+            cursor.execute('SELECT * FROM structured_notes WHERE id = %s', (note_id,))
+        else:
+            cursor.execute('SELECT * FROM structured_notes WHERE id = ?', (note_id,))
+        
         note = dict(cursor.fetchone())
         
         # Get underlyings
-        cursor.execute(f'SELECT * FROM note_underlyings WHERE note_id = {placeholder} ORDER BY underlying_sequence', (note_id,))
+        if self.db_type == 'postgresql':
+            cursor.execute('SELECT * FROM note_underlyings WHERE note_id = %s ORDER BY underlying_sequence', (note_id,))
+        else:
+            cursor.execute('SELECT * FROM note_underlyings WHERE note_id = ?', (note_id,))
+        
         note['underlyings'] = [dict(row) for row in cursor.fetchall()]
         
         return note
@@ -367,22 +374,32 @@ class StructuredNotesDB:
             )
             
             # Update main note
-            placeholder = '%s' if self.db_type == 'postgresql' else '?'
-            
-            query = f'''
-                UPDATE structured_notes
-                SET customer_name = {placeholder}, custodian_bank = {placeholder}, type_of_structured_product = {placeholder},
-                    notional_amount = {placeholder}, isin = {placeholder}, trade_date = {placeholder}, issue_date = {placeholder},
-                    observation_start_date = {placeholder}, final_valuation_date = {placeholder},
-                    coupon_payment_dates = {placeholder}, coupon_per_annum = {placeholder}, coupon_barrier = {placeholder},
-                    ko_type = {placeholder}, ko_observation_frequency = {placeholder}, ki_type = {placeholder},
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = {placeholder}
-            '''
-            cursor.execute(query, update_values)
-            
-            # Delete existing underlyings
-            cursor.execute(f'DELETE FROM note_underlyings WHERE note_id = {placeholder}', (note_id,))
+            if self.db_type == 'postgresql':
+                cursor.execute('''
+                    UPDATE structured_notes
+                    SET customer_name = %s, custodian_bank = %s, type_of_structured_product = %s,
+                        notional_amount = %s, isin = %s, trade_date = %s, issue_date = %s,
+                        observation_start_date = %s, final_valuation_date = %s,
+                        coupon_payment_dates = %s, coupon_per_annum = %s, coupon_barrier = %s,
+                        ko_type = %s, ko_observation_frequency = %s, ki_type = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                ''', update_values)
+                # Delete existing underlyings
+                cursor.execute('DELETE FROM note_underlyings WHERE note_id = %s', (note_id,))
+            else:
+                cursor.execute('''
+                    UPDATE structured_notes
+                    SET customer_name = ?, custodian_bank = ?, type_of_structured_product = ?,
+                        notional_amount = ?, isin = ?, trade_date = ?, issue_date = ?,
+                        observation_start_date = ?, final_valuation_date = ?,
+                        coupon_payment_dates = ?, coupon_per_annum = ?, coupon_barrier = ?,
+                        ko_type = ?, ko_observation_frequency = ?, ki_type = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', update_values)
+                # Delete existing underlyings
+                cursor.execute('DELETE FROM note_underlyings WHERE note_id = ?', (note_id,))
             
             # Insert updated underlyings
             for underlying in underlyings:
@@ -433,9 +450,12 @@ class StructuredNotesDB:
             cursor = self.conn.cursor()
             
             # Delete underlyings and main note
-            placeholder = '%s' if self.db_type == 'postgresql' else '?'
-            cursor.execute(f'DELETE FROM note_underlyings WHERE note_id = {placeholder}', (note_id,))
-            cursor.execute(f'DELETE FROM structured_notes WHERE id = {placeholder}', (note_id,))
+            if self.db_type == 'postgresql':
+                cursor.execute('DELETE FROM note_underlyings WHERE note_id = %s', (note_id,))
+                cursor.execute('DELETE FROM structured_notes WHERE id = %s', (note_id,))
+            else:
+                cursor.execute('DELETE FROM note_underlyings WHERE note_id = ?', (note_id,))
+                cursor.execute('DELETE FROM structured_notes WHERE id = ?', (note_id,))
             
             self.conn.commit()
             return cursor.rowcount > 0
