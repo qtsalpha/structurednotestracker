@@ -179,13 +179,6 @@ if page == "Dashboard":
     if all_notes:
         df_notes = pd.DataFrame(all_notes)
         
-        # Update all statuses first
-        update_all_statuses(db.conn)
-        
-        # Reload notes with updated statuses
-        all_notes = db.get_all_notes()
-        df_notes = pd.DataFrame(all_notes)
-        
         # Key metrics
         col1, col2, col3, col4, col5 = st.columns(5)
         
