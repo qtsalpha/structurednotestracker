@@ -10,6 +10,7 @@ from datetime import datetime, date
 import plotly.express as px
 import os
 from dotenv import load_dotenv
+import pytz
 
 # Load environment variables from .env file
 load_dotenv()
@@ -880,7 +881,28 @@ elif page == "View Notes":
                         st.write(f"KI: ${u['ki_price']:,.2f}" if u['ki_price'] else "KI: N/A")
                     with col3:
                         st.write(f"Last Close: ${u['last_close_price']:,.2f}" if u['last_close_price'] else "Last Close: N/A")
-                        st.write(f"Updated: {u['last_price_update'] or 'Never'}")
+                        # Convert timestamp to Singapore time
+                        if u['last_price_update']:
+                            try:
+                                # Parse timestamp
+                                if isinstance(u['last_price_update'], str):
+                                    utc_time = datetime.strptime(u['last_price_update'], '%Y-%m-%d %H:%M:%S')
+                                else:
+                                    utc_time = u['last_price_update']
+                                
+                                # Convert to Singapore time (UTC+8)
+                                utc_tz = pytz.UTC
+                                sg_tz = pytz.timezone('Asia/Singapore')
+                                
+                                if utc_time.tzinfo is None:
+                                    utc_time = utc_tz.localize(utc_time)
+                                
+                                sg_time = utc_time.astimezone(sg_tz)
+                                st.write(f"Updated: {sg_time.strftime('%Y-%m-%d %H:%M:%S')} SGT")
+                            except:
+                                st.write(f"Updated: {u['last_price_update']}")
+                        else:
+                            st.write("Updated: Never")
                     st.markdown("---")
     else:
         st.info("No notes in database yet.")
