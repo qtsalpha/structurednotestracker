@@ -782,22 +782,42 @@ elif page == "View Notes":
         # View detailed information for selected note
         st.subheader("📋 Detailed View")
         
-        col1, col2 = st.columns([3, 1])
+        col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
-            selected_note_id = st.selectbox("Select note to view details", 
-                                            filtered_df['id'].tolist(),
-                                            format_func=lambda x: f"ID {x}: {filtered_df[filtered_df['id']==x]['customer_name'].values[0]} - {filtered_df[filtered_df['id']==x]['isin'].values[0] or 'No ISIN'}")
+            # Search by ISIN input
+            search_isin = st.text_input("🔍 Search by ISIN", 
+                                       placeholder="Enter ISIN (e.g., XS3208105745)",
+                                       help="Type the ISIN to find and view note details")
         
-        with col2:
-            if st.button("🗑️ Delete Selected Note", type="secondary", use_container_width=True):
+        # Find note by ISIN
+        selected_note_id = None
+        if search_isin:
+            search_isin = search_isin.strip().upper()
+            # Search in filtered dataframe
+            matching_notes = filtered_df[filtered_df['isin'].str.upper() == search_isin]
+            if len(matching_notes) > 0:
+                selected_note_id = matching_notes.iloc[0]['id']
+                st.success(f"✅ Found: {matching_notes.iloc[0]['customer_name']} - {matching_notes.iloc[0]['type_of_structured_product']}")
+            else:
+                # Search in all notes if not found in filtered
+                all_df = pd.DataFrame(all_notes)
+                matching_notes = all_df[all_df['isin'].str.upper() == search_isin]
+                if len(matching_notes) > 0:
+                    selected_note_id = matching_notes.iloc[0]['id']
+                    st.info(f"ℹ️ Found in other filters: {matching_notes.iloc[0]['customer_name']} - {matching_notes.iloc[0]['type_of_structured_product']}")
+                else:
+                    st.error("❌ No note found with this ISIN")
+        
+        with col3:
+            if selected_note_id and st.button("🗑️ Delete Note", type="secondary", use_container_width=True):
                 if st.session_state.get('confirm_delete') != selected_note_id:
                     st.session_state['confirm_delete'] = selected_note_id
                     st.warning("⚠️ Click again to confirm deletion")
                 else:
                     # Confirmed - delete the note
                     if db.delete_note(selected_note_id):
-                        st.success(f"✅ Note ID {selected_note_id} deleted successfully")
+                        st.success(f"✅ Note deleted successfully")
                         st.session_state.pop('confirm_delete', None)
                         st.rerun()
                     else:
