@@ -661,63 +661,18 @@ elif page == "Import from Excel":
 elif page == "View Notes":
     st.title("📋 View Structured Notes")
     
-    # Filters
+    # Get all notes
     all_notes = db.get_all_notes()
     
     if all_notes:
-        # Export buttons at the top
-        st.markdown("### 📥 Export Data")
-        col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
+        df_all = pd.DataFrame(all_notes)
         
-        with col2:
-            # Export to CSV
-            csv_data = export_to_csv(prepare_notes_for_export(all_notes))
-            st.download_button(
-                label="📄 Export CSV",
-                data=csv_data,
-                file_name=get_export_filename("csv"),
-                mime="text/csv",
-                use_container_width=True
-            )
+        # Global action buttons at top
+        st.markdown("### 🔄 Global Actions")
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
         
-        with col3:
-            # Export to Excel
-            excel_data = export_to_excel(prepare_notes_for_export(all_notes))
-            st.download_button(
-                label="📊 Export Excel",
-                data=excel_data,
-                file_name=get_export_filename("xlsx"),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-        
-        st.markdown("---")
-        df_notes = pd.DataFrame(all_notes)
-        
-        # Get unique customers for filter
-        customers = ["All Clients"] + sorted(df_notes['customer_name'].unique().tolist())
-        
-        col1, col2 = st.columns(2)
         with col1:
-            selected_customer = st.selectbox("Filter by Customer", customers)
-        with col2:
-            selected_product = st.selectbox("Filter by Product Type", 
-                                           ["All"] + sorted(df_notes['type_of_structured_product'].unique().tolist()))
-        
-        # Apply filters
-        filtered_df = df_notes.copy()
-        if selected_customer != "All Clients":
-            filtered_df = filtered_df[filtered_df['customer_name'] == selected_customer]
-        if selected_product != "All":
-            filtered_df = filtered_df[filtered_df['type_of_structured_product'] == selected_product]
-        
-        # Display results
-        st.write(f"Showing {len(filtered_df)} notes")
-        
-        # Action buttons
-        col1, col2, col3 = st.columns([1, 1, 3])
-        with col1:
-            if st.button("🔄 Refresh Statuses", use_container_width=True):
+            if st.button("🔄 Refresh Statuses", use_container_width=True, type="secondary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -734,7 +689,7 @@ elif page == "View Notes":
                     
                     if failed:
                         st.warning(f"⚠️ Failed to update {len(failed)} notes:")
-                        with st.expander("View Failed Updates"):
+                        with st.expander("View Failed ISINs"):
                             for failure in failed:
                                 st.error(f"❌ {failure}")
                     
@@ -746,7 +701,7 @@ elif page == "View Notes":
                     st.error(f"❌ Error: {str(e)}")
                     
         with col2:
-            if st.button("💹 Update Prices", use_container_width=True):
+            if st.button("💹 Update Prices", use_container_width=True, type="secondary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -763,7 +718,7 @@ elif page == "View Notes":
                     
                     if errors > 0:
                         st.warning(f"⚠️ Failed to update {errors} tickers:")
-                        with st.expander("View Failed Tickers"):
+                        with st.expander("View Failed Tickers & ISINs"):
                             for failure in failed:
                                 st.error(f"❌ {failure}")
                     
@@ -774,177 +729,204 @@ elif page == "View Notes":
                     status_text.empty()
                     st.error(f"❌ Error: {str(e)}")
         
-        # Calculate coupon columns for each note
-        expected_coupons = []
-        accumulated_coupons = []
-        payments_progress = []
-        
-        for _, row in filtered_df.iterrows():
-            # Expected coupon
-            expected = calculate_expected_coupon(
-                row['notional_amount'],
-                row['coupon_per_annum'],
-                row['coupon_payment_dates']
-            )
-            expected_coupons.append(expected)
-            
-            # Accumulated coupon
-            accumulated, paid, total = calculate_accumulated_coupon(
-                row['notional_amount'],
-                row['coupon_per_annum'],
-                row['coupon_payment_dates']
-            )
-            accumulated_coupons.append(accumulated)
-            payments_progress.append(f"{paid}/{total}" if total > 0 else "0/0")
-        
-        # Add calculated columns
-        filtered_df['expected_coupon'] = expected_coupons
-        filtered_df['accumulated_coupon'] = accumulated_coupons
-        filtered_df['payments_progress'] = payments_progress
-        
-        display_df = filtered_df[[
-            'customer_name', 'custodian_bank', 'type_of_structured_product', 
-            'notional_amount', 'isin', 'coupon_per_annum',
-            'expected_coupon', 'accumulated_coupon', 'payments_progress',
-            'trade_date', 'final_valuation_date', 'current_status'
-        ]].copy()
-        
-        # Format columns for display
-        display_df['coupon_per_annum'] = display_df['coupon_per_annum'].apply(
-            lambda x: f"{x*100:.2f}%" if pd.notna(x) else "N/A"
-        )
-        display_df['notional_amount'] = display_df['notional_amount'].apply(
-            lambda x: f"${x:,.0f}" if pd.notna(x) else "N/A"
-        )
-        display_df['expected_coupon'] = display_df['expected_coupon'].apply(
-            lambda x: f"${x:,.2f}" if pd.notna(x) and x > 0 else "$0.00"
-        )
-        display_df['accumulated_coupon'] = display_df['accumulated_coupon'].apply(
-            lambda x: f"${x:,.2f}" if pd.notna(x) and x > 0 else "$0.00"
-        )
-        
-        # Rename columns for cleaner display
-        display_df.columns = [
-            'Customer', 'Custodian Bank', 'Product Type', 'Notional', 'ISIN',
-            'Coupon p.a.', 'Expected Coupon', 'Accumulated Coupon', 'Payments',
-            'Trade Date', 'Maturity', 'Status'
-        ]
-        
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-        
-        # View detailed information for selected note
-        st.subheader("📋 Detailed View")
-        
-        col1, col2, col3 = st.columns([2, 1, 1])
-        
-        with col1:
-            # Search by ISIN input
-            search_isin = st.text_input("🔍 Search by ISIN", 
-                                       placeholder="Enter ISIN (e.g., XS3208105745)",
-                                       help="Type the ISIN to find and view note details")
-        
-        # Find note by ISIN
-        selected_note_id = None
-        if search_isin:
-            search_isin = search_isin.strip().upper()
-            # Search in filtered dataframe
-            matching_notes = filtered_df[filtered_df['isin'].str.upper() == search_isin]
-            if len(matching_notes) > 0:
-                selected_note_id = matching_notes.iloc[0]['id']
-                st.success(f"✅ Found: {matching_notes.iloc[0]['customer_name']} - {matching_notes.iloc[0]['type_of_structured_product']}")
-            else:
-                # Search in all notes if not found in filtered
-                all_df = pd.DataFrame(all_notes)
-                matching_notes = all_df[all_df['isin'].str.upper() == search_isin]
-                if len(matching_notes) > 0:
-                    selected_note_id = matching_notes.iloc[0]['id']
-                    st.info(f"ℹ️ Found in other filters: {matching_notes.iloc[0]['customer_name']} - {matching_notes.iloc[0]['type_of_structured_product']}")
-                else:
-                    st.error("❌ No note found with this ISIN")
-        
         with col3:
-            if selected_note_id and st.button("🗑️ Delete Note", type="secondary", use_container_width=True):
-                if st.session_state.get('confirm_delete') != selected_note_id:
-                    st.session_state['confirm_delete'] = selected_note_id
-                    st.warning("⚠️ Click again to confirm deletion")
-                else:
-                    # Confirmed - delete the note
-                    if db.delete_note(selected_note_id):
-                        st.success(f"✅ Note deleted successfully")
-                        st.session_state.pop('confirm_delete', None)
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed to delete note")
+            # Export to CSV
+            csv_data = export_to_csv(prepare_notes_for_export(all_notes))
+            st.download_button(
+                label="📄 Export CSV",
+                data=csv_data,
+                file_name=get_export_filename("csv"),
+                mime="text/csv",
+                use_container_width=True
+            )
         
-        if selected_note_id:
-            note_details = db.get_note_with_underlyings(selected_note_id)
-            
-            with st.expander("📄 Note Details", expanded=True):
+        st.markdown("---")
+        
+        # Count notes by status
+        status_counts = df_all['current_status'].value_counts().to_dict()
+        
+        # Create tabs for each status category
+        tab_alive, tab_not_obs, tab_ko, tab_ki, tab_ended = st.tabs([
+            f"🟢 Alive ({status_counts.get('Alive', 0)})",
+            f"⏳ Not Observed Yet ({status_counts.get('Not Observed Yet', 0)})",
+            f"🔴 Knocked Out ({status_counts.get('Knocked Out', 0)})",
+            f"🟠 Knocked In ({status_counts.get('Knocked In', 0)})",
+            f"⚫ Ended ({status_counts.get('Ended', 0)})"
+        ])
+        
+        # Function to render notes for a specific status
+        def render_status_tab(status_filter, tab_container):
+            with tab_container:
+                # Filter notes by status
+                filtered_notes = [note for note in all_notes if note['current_status'] == status_filter]
+                
+                if not filtered_notes:
+                    st.info(f"No notes with status: {status_filter}")
+                    return
+                
+                df_notes = pd.DataFrame(filtered_notes)
+                
+                # Additional filters within tab
                 col1, col2 = st.columns(2)
-                
                 with col1:
-                    st.write(f"**Customer:** {note_details['customer_name']}")
-                    st.write(f"**Custodian Bank:** {note_details['custodian_bank'] or 'N/A'}")
-                    st.write(f"**Product Type:** {note_details['type_of_structured_product']}")
-                    st.write(f"**Notional:** ${note_details['notional_amount']:,.0f}")
-                    st.write(f"**Coupon:** {note_details['coupon_per_annum']*100:.2f}%")
-                
+                    customers = ["All Clients"] + sorted(df_notes['customer_name'].unique().tolist())
+                    selected_customer = st.selectbox(f"Filter by Customer", customers, key=f"customer_{status_filter}")
                 with col2:
-                    st.write(f"**ISIN:** {note_details['isin'] or 'N/A'}")
-                    st.write(f"**Trade Date:** {note_details['trade_date']}")
-                    st.write(f"**Maturity Date:** {note_details['final_valuation_date']}")
-                    
-                    # Show current status with color coding
-                    status = note_details['current_status']
-                    if status == 'Alive':
-                        st.success(f"**Status:** {status}")
-                    elif status == 'Not Observed Yet':
-                        st.info(f"**Status:** {status}")
-                    elif status == 'Knocked Out':
-                        st.error(f"**Status:** {status} (on {note_details['ko_event_date']})")
-                    elif status == 'Knocked In':
-                        st.warning(f"**Status:** {status} (on {note_details['ki_event_date']})")
-                    elif status == 'Ended':
-                        st.info(f"**Status:** {status}")
-                    
-                    st.write(f"**KO Type:** {note_details['ko_type']}")
-                    st.write(f"**KI Type:** {note_details['ki_type']}")
+                    products = ["All"] + sorted(df_notes['type_of_structured_product'].unique().tolist())
+                    selected_product = st.selectbox(f"Filter by Product", products, key=f"product_{status_filter}")
                 
-                st.write("**Underlyings:**")
-                for u in note_details['underlyings']:
-                    st.write(f"**{u['underlying_sequence']}. {u['underlying_name']}** ({u['underlying_ticker']})")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.write(f"Spot: ${u['spot_price']:,.2f}" if u['spot_price'] else "Spot: N/A")
-                        st.write(f"Strike: ${u['strike_price']:,.2f}" if u['strike_price'] else "Strike: N/A")
-                    with col2:
-                        st.write(f"KO: ${u['ko_price']:,.2f}" if u['ko_price'] else "KO: N/A")
-                        st.write(f"KI: ${u['ki_price']:,.2f}" if u['ki_price'] else "KI: N/A")
-                    with col3:
-                        st.write(f"Last Close: ${u['last_close_price']:,.2f}" if u['last_close_price'] else "Last Close: N/A")
-                        # Convert timestamp to Singapore time
-                        if u['last_price_update']:
-                            try:
-                                # Parse timestamp
-                                if isinstance(u['last_price_update'], str):
-                                    utc_time = datetime.strptime(u['last_price_update'], '%Y-%m-%d %H:%M:%S')
-                                else:
-                                    utc_time = u['last_price_update']
+                # Apply additional filters
+                if selected_customer != "All Clients":
+                    df_notes = df_notes[df_notes['customer_name'] == selected_customer]
+                if selected_product != "All":
+                    df_notes = df_notes[df_notes['type_of_structured_product'] == selected_product]
+                
+                st.write(f"**Showing {len(df_notes)} notes**")
+                
+                # Calculate coupon columns
+                expected_coupons = []
+                accumulated_coupons = []
+                payments_progress = []
+                
+                for _, row in df_notes.iterrows():
+                    expected = calculate_expected_coupon(
+                        row['notional_amount'],
+                        row['coupon_per_annum'],
+                        row['coupon_payment_dates']
+                    )
+                    expected_coupons.append(expected)
+                    
+                    accumulated, paid, total = calculate_accumulated_coupon(
+                        row['notional_amount'],
+                        row['coupon_per_annum'],
+                        row['coupon_payment_dates']
+                    )
+                    accumulated_coupons.append(accumulated)
+                    payments_progress.append(f"{paid}/{total}" if total > 0 else "0/0")
+                
+                df_notes['expected_coupon'] = expected_coupons
+                df_notes['accumulated_coupon'] = accumulated_coupons
+                df_notes['payments_progress'] = payments_progress
+                
+                # Display table
+                display_df = df_notes[[
+                    'customer_name', 'custodian_bank', 'type_of_structured_product', 
+                    'notional_amount', 'isin', 'coupon_per_annum',
+                    'expected_coupon', 'accumulated_coupon', 'payments_progress',
+                    'trade_date', 'final_valuation_date'
+                ]].copy()
+                
+                # Format columns
+                display_df['coupon_per_annum'] = display_df['coupon_per_annum'].apply(
+                    lambda x: f"{x*100:.2f}%" if pd.notna(x) else "N/A"
+                )
+                display_df['notional_amount'] = display_df['notional_amount'].apply(
+                    lambda x: f"${x:,.0f}" if pd.notna(x) else "N/A"
+                )
+                display_df['expected_coupon'] = display_df['expected_coupon'].apply(
+                    lambda x: f"${x:,.2f}" if pd.notna(x) and x > 0 else "$0.00"
+                )
+                display_df['accumulated_coupon'] = display_df['accumulated_coupon'].apply(
+                    lambda x: f"${x:,.2f}" if pd.notna(x) and x > 0 else "$0.00"
+                )
+                
+                # Rename columns
+                display_df.columns = [
+                    'Customer', 'Custodian Bank', 'Product Type', 'Notional', 'ISIN',
+                    'Coupon p.a.', 'Expected Coupon', 'Accumulated Coupon', 'Payments',
+                    'Trade Date', 'Maturity'
+                ]
+                
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
+                
+                # ISIN Search and Details
+                st.markdown("---")
+                st.subheader("🔍 Search & View Details")
+                
+                search_isin = st.text_input(f"Search by ISIN", 
+                                           placeholder="Enter ISIN",
+                                           key=f"search_{status_filter}")
+                
+                if search_isin:
+                    search_isin = search_isin.strip().upper()
+                    matching = df_notes[df_notes['isin'].str.upper() == search_isin]
+                    
+                    if len(matching) > 0:
+                        selected_note_id = int(matching.iloc[0]['id'])
+                        st.success(f"✅ Found: {matching.iloc[0]['customer_name']}")
+                        
+                        note_details = db.get_note_with_underlyings(selected_note_id)
+                        
+                        with st.expander("📄 Note Details", expanded=True):
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.write(f"**Customer:** {note_details['customer_name']}")
+                                st.write(f"**Custodian Bank:** {note_details['custodian_bank'] or 'N/A'}")
+                                st.write(f"**Product Type:** {note_details['type_of_structured_product']}")
+                                st.write(f"**Notional:** ${note_details['notional_amount']:,.0f}")
+                                st.write(f"**Coupon:** {note_details['coupon_per_annum']*100:.2f}%")
+                            
+                            with col2:
+                                st.write(f"**ISIN:** {note_details['isin'] or 'N/A'}")
+                                st.write(f"**Trade Date:** {note_details['trade_date']}")
+                                st.write(f"**Maturity:** {note_details['final_valuation_date']}")
                                 
-                                # Convert to Singapore time (UTC+8)
-                                utc_tz = pytz.UTC
-                                sg_tz = pytz.timezone('Asia/Singapore')
-                                
-                                if utc_time.tzinfo is None:
-                                    utc_time = utc_tz.localize(utc_time)
-                                
-                                sg_time = utc_time.astimezone(sg_tz)
-                                st.write(f"Updated: {sg_time.strftime('%Y-%m-%d %H:%M:%S')} SGT")
-                            except:
-                                st.write(f"Updated: {u['last_price_update']}")
-                        else:
-                            st.write("Updated: Never")
-                    st.markdown("---")
+                                # Status with color
+                                status = note_details['current_status']
+                                if status == 'Alive':
+                                    st.success(f"**Status:** {status}")
+                                elif status == 'Not Observed Yet':
+                                    st.info(f"**Status:** {status}")
+                                elif status == 'Knocked Out':
+                                    st.error(f"**Status:** {status}")
+                                elif status == 'Knocked In':
+                                    st.warning(f"**Status:** {status}")
+                                elif status == 'Ended':
+                                    st.info(f"**Status:** {status}")
+                            
+                            st.write("**Underlyings:**")
+                            for u in note_details['underlyings']:
+                                st.write(f"**{u['underlying_sequence']}. {u['underlying_name']}** ({u['underlying_ticker']})")
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.write(f"Spot: ${u['spot_price']:,.2f}" if u['spot_price'] else "Spot: N/A")
+                                    st.write(f"Strike: ${u['strike_price']:,.2f}" if u['strike_price'] else "Strike: N/A")
+                                with col2:
+                                    st.write(f"KO: ${u['ko_price']:,.2f}" if u['ko_price'] else "KO: N/A")
+                                    st.write(f"KI: ${u['ki_price']:,.2f}" if u['ki_price'] else "KI: N/A")
+                                with col3:
+                                    st.write(f"Last Close: ${u['last_close_price']:,.2f}" if u['last_close_price'] else "Last Close: N/A")
+                                    # Convert timestamp to Singapore time
+                                    if u['last_price_update']:
+                                        try:
+                                            if isinstance(u['last_price_update'], str):
+                                                utc_time = datetime.strptime(u['last_price_update'], '%Y-%m-%d %H:%M:%S')
+                                            else:
+                                                utc_time = u['last_price_update']
+                                            
+                                            utc_tz = pytz.UTC
+                                            sg_tz = pytz.timezone('Asia/Singapore')
+                                            
+                                            if utc_time.tzinfo is None:
+                                                utc_time = utc_tz.localize(utc_time)
+                                            
+                                            sg_time = utc_time.astimezone(sg_tz)
+                                            st.write(f"Updated: {sg_time.strftime('%Y-%m-%d %H:%M:%S')} SGT")
+                                        except:
+                                            st.write(f"Updated: {u['last_price_update']}")
+                                    else:
+                                        st.write("Updated: Never")
+                                st.markdown("---")
+                    else:
+                        st.error(f"❌ ISIN '{search_isin}' not found in {status_filter} notes")
+        
+        # Render each tab
+        render_status_tab('Alive', tab_alive)
+        render_status_tab('Not Observed Yet', tab_not_obs)
+        render_status_tab('Knocked Out', tab_ko)
+        render_status_tab('Knocked In', tab_ki)
+        render_status_tab('Ended', tab_ended)
     else:
         st.info("No notes in database yet.")
 
