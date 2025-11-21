@@ -281,6 +281,7 @@ elif page == "Client Portfolio":
             # === SECTION 2: UNDERLYING EXPOSURE ANALYSIS ===
             st.markdown("---")
             st.subheader("📈 Underlying Exposure Analysis")
+            st.caption("Shows percentage of client's notes containing each underlying")
             
             # Get all underlyings for this client
             underlying_exposure = {}
@@ -289,41 +290,36 @@ elif page == "Client Portfolio":
                 note_id = int(note['id'])
                 note_details = db.get_note_with_underlyings(note_id)
                 notional = note['notional_amount']
+                isin = note.get('isin', 'No ISIN')
                 
                 for u in note_details['underlyings']:
                     ticker = u['underlying_ticker']
                     
                     if ticker not in underlying_exposure:
                         underlying_exposure[ticker] = {
-                            'note_count': 0,  # Number of ISINs containing this underlying
-                            'risk_notional': 0,  # Sum of notionals from ISINs with this underlying
-                            'isins': set()
+                            'isins': set(),
+                            'total_notional': 0
                         }
                     
                     # Only count each ISIN once per underlying
-                    isin = note.get('isin', 'No ISIN')
                     if isin not in underlying_exposure[ticker]['isins']:
-                        underlying_exposure[ticker]['note_count'] += 1
-                        underlying_exposure[ticker]['risk_notional'] += notional
                         underlying_exposure[ticker]['isins'].add(isin)
+                        underlying_exposure[ticker]['total_notional'] += notional
             
             # Create exposure dataframe
             exposure_data = []
             for ticker, data in underlying_exposure.items():
-                risk_pct = (data['risk_notional'] / total_notional) * 100
+                note_count = len(data['isins'])
+                pct_of_notes = (note_count / total_notes) * 100
+                
                 exposure_data.append({
                     'Underlying': ticker,
-                    'Notes': data['note_count'],
-                    'Risk Notional': data['risk_notional'],
-                    'Risk %': risk_pct,
-                    'ISINs': ', '.join(sorted(data['isins']))
+                    'Notes': note_count,
+                    '% of Portfolio': pct_of_notes,
+                    'Total Notional': data['total_notional']
                 })
             
-            df_exposure = pd.DataFrame(exposure_data).sort_values('Risk %', ascending=False)
-            
-            # Info box explaining the calculation
-            st.info("💡 **Risk Exposure:** For worst-of products, you're exposed to the FULL notional for EACH underlying. "
-                   "Risk % can exceed 100% because one $1M note with 3 underlyings = $1M risk exposure to each.")
+            df_exposure = pd.DataFrame(exposure_data).sort_values('% of Portfolio', ascending=False)
             
             # Display exposure table and chart
             col1, col2 = st.columns([1, 1])
@@ -331,27 +327,27 @@ elif page == "Client Portfolio":
             with col1:
                 st.write("**Underlying Exposure Table**")
                 display_exposure = df_exposure.copy()
-                display_exposure['Risk Notional'] = display_exposure['Risk Notional'].apply(lambda x: f"${x:,.0f}")
-                display_exposure['Risk %'] = display_exposure['Risk %'].apply(lambda x: f"{x:.1f}%")
-                st.dataframe(display_exposure[['Underlying', 'Notes', 'Risk Notional', 'Risk %']], 
+                display_exposure['Total Notional'] = display_exposure['Total Notional'].apply(lambda x: f"${x:,.0f}")
+                display_exposure['% of Portfolio'] = display_exposure['% of Portfolio'].apply(lambda x: f"{x:.1f}%")
+                st.dataframe(display_exposure[['Underlying', 'Notes', '% of Portfolio', 'Total Notional']], 
                            use_container_width=True, hide_index=True)
                 
-                st.caption(f"📊 {len(df_exposure)} unique underlyings | {total_notes} total notes | ${total_notional:,.0f} portfolio notional")
+                st.caption(f"📊 {len(df_exposure)} unique underlyings in {total_notes} notes")
             
             with col2:
-                st.write("**Risk Exposure by Underlying**")
-                # Bar chart showing risk percentage
+                st.write("**Portfolio Composition**")
+                # Bar chart showing percentage of notes
                 fig = px.bar(df_exposure.head(10), 
-                           x='Risk %', 
+                           x='% of Portfolio', 
                            y='Underlying',
                            orientation='h',
-                           text='Risk %',
-                           title="Top 10 Underlyings by Risk Exposure %",
-                           color='Risk %',
-                           color_continuous_scale='Reds')
+                           text='% of Portfolio',
+                           title="Top 10 Underlyings (% of Notes)",
+                           color='% of Portfolio',
+                           color_continuous_scale='Blues')
                 fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
                 fig.update_layout(yaxis={'categoryorder':'total ascending'}, 
-                                xaxis_title="% Risk Exposure (can exceed 100%)",
+                                xaxis_title="% of Client's Notes (max 100%)",
                                 showlegend=False)
                 st.plotly_chart(fig, use_container_width=True)
             
