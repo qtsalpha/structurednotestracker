@@ -1272,13 +1272,33 @@ elif page == "Edit Note":
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    trade_date = st.date_input("Trade Date *", value=datetime.strptime(note['trade_date'], '%Y-%m-%d').date() if note['trade_date'] else date.today())
+                    # Handle date conversion - could be string or date object
+                    if isinstance(note['trade_date'], str):
+                        trade_val = datetime.strptime(note['trade_date'], '%Y-%m-%d').date()
+                    else:
+                        trade_val = note['trade_date'] if note['trade_date'] else date.today()
+                    trade_date = st.date_input("Trade Date *", value=trade_val)
+                    
                 with col2:
-                    issue_date = st.date_input("Issue Date *", value=datetime.strptime(note['issue_date'], '%Y-%m-%d').date() if note['issue_date'] else date.today())
+                    if isinstance(note['issue_date'], str):
+                        issue_val = datetime.strptime(note['issue_date'], '%Y-%m-%d').date()
+                    else:
+                        issue_val = note['issue_date'] if note['issue_date'] else date.today()
+                    issue_date = st.date_input("Issue Date *", value=issue_val)
+                    
                 with col3:
-                    obs_start = st.date_input("Observation Start *", value=datetime.strptime(note['observation_start_date'], '%Y-%m-%d').date() if note['observation_start_date'] else date.today())
+                    if isinstance(note['observation_start_date'], str):
+                        obs_val = datetime.strptime(note['observation_start_date'], '%Y-%m-%d').date()
+                    else:
+                        obs_val = note['observation_start_date'] if note['observation_start_date'] else date.today()
+                    obs_start = st.date_input("Observation Start *", value=obs_val)
+                    
                 with col4:
-                    final_val_date = st.date_input("Final Valuation Date *", value=datetime.strptime(note['final_valuation_date'], '%Y-%m-%d').date() if note['final_valuation_date'] else date.today())
+                    if isinstance(note['final_valuation_date'], str):
+                        final_val = datetime.strptime(note['final_valuation_date'], '%Y-%m-%d').date()
+                    else:
+                        final_val = note['final_valuation_date'] if note['final_valuation_date'] else date.today()
+                    final_val_date = st.date_input("Final Valuation Date *", value=final_val)
                 
                 st.markdown("---")
                 
