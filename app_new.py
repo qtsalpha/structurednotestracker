@@ -165,7 +165,7 @@ db = init_database()
 
 # Sidebar navigation
 st.sidebar.title("📊 Navigation")
-page = st.sidebar.radio("Menu", ["Dashboard", "Add New Note", "Import from Excel", "View Notes", "Edit Note", "Settings"], label_visibility="collapsed")
+page = st.sidebar.radio("Menu", ["Dashboard", "Client Portfolio", "Add New Note", "Import from Excel", "View Notes", "Edit Note", "Settings"], label_visibility="collapsed")
 
 # Show logout button if authenticated
 show_logout_button()
@@ -236,7 +236,242 @@ if page == "Dashboard":
         st.info("No notes in database. Add your first note using 'Add New Note' page.")
 
 # ============================================================================
-# PAGE 2: ADD NEW NOTE
+# PAGE 2: CLIENT PORTFOLIO ANALYTICS
+# ============================================================================
+elif page == "Client Portfolio":
+    st.title("👤 Client Portfolio Analytics")
+    
+    # Get all notes
+    all_notes = db.get_all_notes()
+    
+    if all_notes:
+        df_all = pd.DataFrame(all_notes)
+        
+        # Client selection
+        clients = sorted(df_all['customer_name'].unique().tolist())
+        selected_client = st.selectbox("📋 Select Client", clients, key="client_portfolio_select")
+        
+        if selected_client:
+            # Filter notes for selected client
+            client_notes = [note for note in all_notes if note['customer_name'] == selected_client]
+            df_client = pd.DataFrame(client_notes)
+            
+            # === SECTION 1: PORTFOLIO SUMMARY ===
+            st.markdown("---")
+            st.subheader("💼 Portfolio Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                total_notes = len(client_notes)
+                st.metric("Total Notes", total_notes)
+            
+            with col2:
+                total_notional = df_client['notional_amount'].sum()
+                st.metric("Total Notional", f"${total_notional:,.0f}")
+            
+            with col3:
+                alive_count = len(df_client[df_client['current_status'] == 'Alive'])
+                st.metric("Active Notes", alive_count)
+            
+            with col4:
+                ki_count = len(df_client[df_client['current_status'] == 'Knocked In'])
+                st.metric("KI Notes", ki_count, delta=None if ki_count == 0 else "⚠️")
+            
+            # === SECTION 2: UNDERLYING EXPOSURE ANALYSIS ===
+            st.markdown("---")
+            st.subheader("📈 Underlying Exposure Analysis")
+            
+            # Get all underlyings for this client
+            underlying_exposure = {}
+            
+            for note in client_notes:
+                note_id = int(note['id'])
+                note_details = db.get_note_with_underlyings(note_id)
+                
+                for u in note_details['underlyings']:
+                    ticker = u['underlying_ticker']
+                    notional = note['notional_amount']
+                    
+                    if ticker not in underlying_exposure:
+                        underlying_exposure[ticker] = {
+                            'notional': 0,
+                            'count': 0,
+                            'isins': []
+                        }
+                    
+                    underlying_exposure[ticker]['notional'] += notional
+                    underlying_exposure[ticker]['count'] += 1
+                    underlying_exposure[ticker]['isins'].append(note.get('isin', 'No ISIN'))
+            
+            # Create exposure dataframe
+            exposure_data = []
+            for ticker, data in underlying_exposure.items():
+                exposure_pct = (data['notional'] / total_notional) * 100
+                exposure_data.append({
+                    'Underlying': ticker,
+                    'Count': data['count'],
+                    'Total Notional': data['notional'],
+                    'Exposure %': exposure_pct,
+                    'ISINs': ', '.join(set(data['isins']))
+                })
+            
+            df_exposure = pd.DataFrame(exposure_data).sort_values('Exposure %', ascending=False)
+            
+            # Display exposure table and chart
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.write("**Underlying Exposure Table**")
+                display_exposure = df_exposure.copy()
+                display_exposure['Total Notional'] = display_exposure['Total Notional'].apply(lambda x: f"${x:,.0f}")
+                display_exposure['Exposure %'] = display_exposure['Exposure %'].apply(lambda x: f"{x:.2f}%")
+                st.dataframe(display_exposure[['Underlying', 'Count', 'Total Notional', 'Exposure %']], 
+                           use_container_width=True, hide_index=True)
+            
+            with col2:
+                st.write("**Exposure by Underlying**")
+                # Bar chart showing exposure percentage
+                fig = px.bar(df_exposure.head(10), 
+                           x='Exposure %', 
+                           y='Underlying',
+                           orientation='h',
+                           text='Exposure %',
+                           title="Top 10 Underlyings by Exposure %")
+                fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                fig.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # === SECTION 3: MATURITY TIMELINE ===
+            st.markdown("---")
+            st.subheader("📅 Maturity Timeline")
+            
+            # Get earliest and latest maturity dates
+            df_client_sorted = df_client.sort_values('final_valuation_date')
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**🔜 Earliest Maturity**")
+                earliest_note = df_client_sorted.iloc[0]
+                earliest_id = int(earliest_note['id'])
+                earliest_details = db.get_note_with_underlyings(earliest_id)
+                
+                st.write(f"**Date:** {earliest_note['final_valuation_date']}")
+                st.write(f"**ISIN:** {earliest_note['isin'] or 'No ISIN'}")
+                st.write(f"**Product:** {earliest_note['type_of_structured_product']}")
+                st.write(f"**Notional:** ${earliest_note['notional_amount']:,.0f}")
+                st.write(f"**Status:** {earliest_note['current_status']}")
+                st.write("**Underlyings:**")
+                for u in earliest_details['underlyings']:
+                    st.caption(f"  • {u['underlying_ticker']}")
+            
+            with col2:
+                st.write("**🔚 Furthest Maturity**")
+                latest_note = df_client_sorted.iloc[-1]
+                latest_id = int(latest_note['id'])
+                latest_details = db.get_note_with_underlyings(latest_id)
+                
+                st.write(f"**Date:** {latest_note['final_valuation_date']}")
+                st.write(f"**ISIN:** {latest_note['isin'] or 'No ISIN'}")
+                st.write(f"**Product:** {latest_note['type_of_structured_product']}")
+                st.write(f"**Notional:** ${latest_note['notional_amount']:,.0f}")
+                st.write(f"**Status:** {latest_note['current_status']}")
+                st.write("**Underlyings:**")
+                for u in latest_details['underlyings']:
+                    st.caption(f"  • {u['underlying_ticker']}")
+            
+            # === SECTION 4: KI RISK ALERT ===
+            st.markdown("---")
+            st.subheader("⚠️ KI Risk Alert")
+            st.info("Notes at risk: Within 5% of KI barrier AND less than 1 month to maturity")
+            
+            # Calculate KI risk
+            from datetime import datetime, timedelta
+            today = date.today()
+            one_month_from_now = today + timedelta(days=30)
+            
+            ki_risk_notes = []
+            
+            for note in client_notes:
+                # Skip if already KI or KO or Ended
+                if note['current_status'] not in ['Alive', 'Not Observed Yet']:
+                    continue
+                
+                # Check if within 1 month of maturity
+                try:
+                    final_val = datetime.strptime(note['final_valuation_date'], '%Y-%m-%d').date()
+                    if final_val > one_month_from_now:
+                        continue  # More than 1 month away
+                except:
+                    continue
+                
+                note_id = int(note['id'])
+                note_details = db.get_note_with_underlyings(note_id)
+                
+                # Check each underlying
+                for u in note_details['underlyings']:
+                    if not u['ki_price'] or not u['last_close_price']:
+                        continue
+                    
+                    # Calculate how close to KI (percentage above KI)
+                    pct_above_ki = ((u['last_close_price'] - u['ki_price']) / u['ki_price']) * 100
+                    
+                    # If within 5% of KI barrier
+                    if 0 < pct_above_ki <= 5:
+                        days_to_maturity = (final_val - today).days
+                        
+                        ki_risk_notes.append({
+                            'ISIN': note.get('isin', 'No ISIN'),
+                            'Product': note['type_of_structured_product'],
+                            'Underlying': u['underlying_ticker'],
+                            'Current Price': u['last_close_price'],
+                            'KI Price': u['ki_price'],
+                            '% Above KI': pct_above_ki,
+                            'Days to Maturity': days_to_maturity,
+                            'Final Val Date': note['final_valuation_date']
+                        })
+            
+            if ki_risk_notes:
+                st.warning(f"⚠️ Found {len(ki_risk_notes)} underlyings at KI risk!")
+                
+                df_risk = pd.DataFrame(ki_risk_notes)
+                df_risk = df_risk.sort_values('% Above KI')
+                
+                # Format for display
+                df_risk['Current Price'] = df_risk['Current Price'].apply(lambda x: f"${x:.2f}")
+                df_risk['KI Price'] = df_risk['KI Price'].apply(lambda x: f"${x:.2f}")
+                df_risk['% Above KI'] = df_risk['% Above KI'].apply(lambda x: f"{x:.2f}%")
+                
+                st.dataframe(df_risk, use_container_width=True, hide_index=True)
+                
+                st.caption("💡 These underlyings are dangerously close to KI barriers. Monitor closely!")
+            else:
+                st.success("✅ No immediate KI risks detected")
+            
+            # === SECTION 5: STATUS BREAKDOWN ===
+            st.markdown("---")
+            st.subheader("📊 Portfolio by Status")
+            
+            status_breakdown = df_client['current_status'].value_counts()
+            
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                for status, count in status_breakdown.items():
+                    notional = df_client[df_client['current_status'] == status]['notional_amount'].sum()
+                    st.metric(status, f"{count} notes", f"${notional:,.0f}")
+            
+            with col2:
+                fig = px.pie(values=status_breakdown.values, 
+                           names=status_breakdown.index,
+                           title=f"{selected_client} - Notes by Status")
+                st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No notes in database yet.")
+
+# ============================================================================
+# PAGE 3: ADD NEW NOTE
 # ============================================================================
 elif page == "Add New Note":
     st.title("➕ Add New Structured Note")
@@ -459,7 +694,7 @@ elif page == "Add New Note":
                     st.exception(e)
 
 # ============================================================================
-# PAGE 3: IMPORT FROM EXCEL
+# PAGE 4: IMPORT FROM EXCEL
 # ============================================================================
 elif page == "Import from Excel":
     st.title("📥 Import Notes from Excel")
@@ -657,7 +892,7 @@ elif page == "Import from Excel":
             """)
 
 # ============================================================================
-# PAGE 4: VIEW NOTES
+# PAGE 5: VIEW NOTES
 # ============================================================================
 elif page == "View Notes":
     st.title("📋 View Structured Notes")
@@ -966,7 +1201,7 @@ elif page == "View Notes":
         st.info("No notes in database yet.")
 
 # ============================================================================
-# PAGE 5: EDIT NOTE
+# PAGE 6: EDIT NOTE
 # ============================================================================
 elif page == "Edit Note":
     st.title("✏️ Edit Structured Note")
@@ -1182,7 +1417,7 @@ elif page == "Edit Note":
         st.info("No notes in database to edit.")
 
 # ============================================================================
-# PAGE 6: SETTINGS
+# PAGE 7: SETTINGS
 # ============================================================================
 elif page == "Settings":
     st.title("⚙️ Settings")
