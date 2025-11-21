@@ -458,7 +458,87 @@ elif page == "Client Portfolio":
             else:
                 st.success("✅ No immediate KI risks detected")
             
-            # === SECTION 5: STATUS BREAKDOWN ===
+            # === SECTION 5: RETURN ESTIMATE ===
+            st.markdown("---")
+            st.subheader("💰 Expected Return Analysis")
+            
+            # Calculate expected returns for each note
+            return_data = []
+            total_expected_coupon = 0
+            
+            for note in client_notes:
+                # Calculate expected coupon for this note
+                expected_coupon = calculate_expected_coupon(
+                    note['notional_amount'],
+                    note['coupon_per_annum'],
+                    note['coupon_payment_dates']
+                )
+                
+                total_expected_coupon += expected_coupon
+                
+                # Calculate return % for this note
+                if note['notional_amount'] > 0:
+                    note_return_pct = (expected_coupon / note['notional_amount']) * 100
+                else:
+                    note_return_pct = 0
+                
+                # Calculate number of payments
+                payment_dates = note.get('coupon_payment_dates', '')
+                num_payments = len(payment_dates.split(',')) if payment_dates else 0
+                
+                return_data.append({
+                    'ISIN': note.get('isin', 'No ISIN'),
+                    'Product': note['type_of_structured_product'],
+                    'Notional': note['notional_amount'],
+                    'Coupon p.a.': note['coupon_per_annum'] * 100,
+                    'Payments': num_payments,
+                    'Expected Coupon': expected_coupon,
+                    'Return %': note_return_pct,
+                    'Status': note['current_status']
+                })
+            
+            # Calculate portfolio-level return
+            if total_notional > 0:
+                portfolio_return_pct = (total_expected_coupon / total_notional) * 100
+            else:
+                portfolio_return_pct = 0
+            
+            # Display return metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Expected Coupon", f"${total_expected_coupon:,.2f}")
+            
+            with col2:
+                st.metric("Portfolio Return %", f"{portfolio_return_pct:.2f}%")
+            
+            with col3:
+                avg_coupon_rate = df_client['coupon_per_annum'].mean() * 100
+                st.metric("Avg Coupon Rate", f"{avg_coupon_rate:.2f}%")
+            
+            with col4:
+                # Calculate weighted average tenor
+                total_payments = sum([r['Payments'] for r in return_data])
+                avg_payments = total_payments / len(return_data) if return_data else 0
+                st.metric("Avg Payment Count", f"{avg_payments:.1f}")
+            
+            # Return breakdown table
+            st.write("**Return Breakdown by ISIN**")
+            df_returns = pd.DataFrame(return_data).sort_values('Expected Coupon', ascending=False)
+            
+            # Format for display
+            display_returns = df_returns.copy()
+            display_returns['Notional'] = display_returns['Notional'].apply(lambda x: f"${x:,.0f}")
+            display_returns['Coupon p.a.'] = display_returns['Coupon p.a.'].apply(lambda x: f"{x:.2f}%")
+            display_returns['Expected Coupon'] = display_returns['Expected Coupon'].apply(lambda x: f"${x:,.2f}")
+            display_returns['Return %'] = display_returns['Return %'].apply(lambda x: f"{x:.2f}%")
+            
+            st.dataframe(display_returns, use_container_width=True, hide_index=True)
+            
+            st.caption("💡 Expected Coupon = Notional × Coupon p.a. × Number of Payments")
+            st.caption("📊 Portfolio Return % = Total Expected Coupons / Total Notional")
+            
+            # === SECTION 6: STATUS BREAKDOWN ===
             st.markdown("---")
             st.subheader("📊 Portfolio by Status")
             
