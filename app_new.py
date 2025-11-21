@@ -162,7 +162,7 @@ db = init_database()
 
 # Sidebar navigation
 st.sidebar.title("📊 Navigation")
-page = st.sidebar.radio("", ["Dashboard", "Add New Note", "Import from Excel", "View Notes", "Edit Note", "Update Prices", "Settings"])
+page = st.sidebar.radio("Menu", ["Dashboard", "Add New Note", "Import from Excel", "View Notes", "Edit Note", "Update Prices", "Settings"], label_visibility="collapsed")
 
 # Show logout button if authenticated
 show_logout_button()

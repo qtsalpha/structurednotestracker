@@ -36,7 +36,4 @@ toolbarMode = "auto"
 # Logging level
 level = "info"
 
-[deprecation]
-# Deprecation warnings
-showfileUploaderEncoding = false
-showPyplotGlobalUse = false
+# Removed deprecated config options for Streamlit 1.51+

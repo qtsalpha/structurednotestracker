@@ -101,7 +101,14 @@ def update_all_prices(conn, delay: float = 0.2) -> Tuple[int, int]:
         WHERE underlying_ticker IS NOT NULL AND underlying_ticker != ''
     ''')
     
-    tickers = [row[0] for row in cursor.fetchall()]
+    # Handle both PostgreSQL (dict) and SQLite (tuple) rows
+    rows = cursor.fetchall()
+    tickers = []
+    for row in rows:
+        if isinstance(row, dict):
+            tickers.append(row['underlying_ticker'])
+        else:
+            tickers.append(row[0])
     
     print(f"🔄 Updating prices for {len(tickers)} unique tickers...")
     
