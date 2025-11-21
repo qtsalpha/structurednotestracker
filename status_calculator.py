@@ -7,6 +7,20 @@ from datetime import datetime, date
 from typing import Dict, List
 
 
+def get_placeholder(conn) -> str:
+    """
+    Get the correct SQL placeholder for the database type
+    Returns '%s' for PostgreSQL, '?' for SQLite
+    """
+    try:
+        # Check if it's a PostgreSQL connection
+        if hasattr(conn, 'get_backend_pid'):
+            return '%s'
+    except:
+        pass
+    return '?'
+
+
 def calculate_note_status(note: Dict, today: date = None) -> str:
     """
     Calculate the current status of a structured note
@@ -91,15 +105,11 @@ def update_note_status(conn, note_id: int) -> str:
         Updated status
     """
     cursor = conn.cursor()
+    placeholder = get_placeholder(conn)
     
-    # Get note data - use %s for PostgreSQL, ? for SQLite
-    try:
-        # Try PostgreSQL syntax first
-        cursor.execute('SELECT * FROM structured_notes WHERE id = %s', (note_id,))
-    except:
-        # Fall back to SQLite syntax
-        cursor.execute('SELECT * FROM structured_notes WHERE id = ?', (note_id,))
-    
+    # Get note data
+    query = f'SELECT * FROM structured_notes WHERE id = {placeholder}'
+    cursor.execute(query, (note_id,))
     row = cursor.fetchone()
     
     if not row:
@@ -112,20 +122,12 @@ def update_note_status(conn, note_id: int) -> str:
     new_status = calculate_note_status(note)
     
     # Update in database
-    try:
-        # Try PostgreSQL syntax first
-        cursor.execute('''
-            UPDATE structured_notes
-            SET current_status = %s, updated_at = CURRENT_TIMESTAMP
-            WHERE id = %s
-        ''', (new_status, note_id))
-    except:
-        # Fall back to SQLite syntax
-        cursor.execute('''
-            UPDATE structured_notes
-            SET current_status = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        ''', (new_status, note_id))
+    query = f'''
+        UPDATE structured_notes
+        SET current_status = {placeholder}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = {placeholder}
+    '''
+    cursor.execute(query, (new_status, note_id))
     
     conn.commit()
     
