@@ -44,7 +44,15 @@ def calculate_expected_coupon(notional_amount: float, coupon_per_annum: float,
     """
     Calculate expected total coupon amount
     
-    Formula: Notional Amount × Coupon per Annum × Number of Coupon Payments
+    For monthly/periodic payments:
+    - Each payment = Notional × (Coupon p.a. / Payments per year)
+    - Total = Notional × Coupon p.a. × (Number of payments / Payments per year)
+    
+    Example: 12% p.a., 12 monthly payments over 1 year
+    - Total = $1M × 12% = $120,000 (correct!)
+    
+    Example: 15% p.a., 24 monthly payments over 2 years
+    - Total = $1M × 15% × 2 = $300,000 (correct!)
     
     Args:
         notional_amount: Notional amount invested
@@ -64,10 +72,25 @@ def calculate_expected_coupon(notional_amount: float, coupon_per_annum: float,
     if num_payments == 0:
         return 0.0
     
-    # Calculate expected total coupon
-    # Note: This assumes each payment is for the full annual coupon divided by number of payments
-    # Or it could be the full coupon paid at each date - clarify with user
-    expected_total = notional_amount * coupon_per_annum * num_payments
+    # Calculate time period from first to last payment
+    if num_payments >= 2:
+        first_payment = payment_dates[0]
+        last_payment = payment_dates[-1]
+        
+        # Calculate years between first and last payment
+        days_between = (last_payment - first_payment).days
+        years = days_between / 365.25
+        
+        # Add one payment period to account for the full term
+        # (e.g., 12 monthly payments spans 11 months, but covers 1 full year)
+        payment_freq_days = days_between / (num_payments - 1) if num_payments > 1 else 30
+        years += (payment_freq_days / 365.25)
+        
+        # Total expected coupon = Notional × Annual Coupon × Years
+        expected_total = notional_amount * coupon_per_annum * years
+    else:
+        # Single payment - assume it's for 1 year
+        expected_total = notional_amount * coupon_per_annum
     
     return expected_total
 

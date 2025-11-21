@@ -535,8 +535,9 @@ elif page == "Client Portfolio":
             
             st.dataframe(display_returns, use_container_width=True, hide_index=True)
             
-            st.caption("💡 Expected Coupon = Notional × Coupon p.a. × Number of Payments")
-            st.caption("📊 Portfolio Return % = Total Expected Coupons / Total Notional")
+            st.caption("💡 **Expected Coupon:** Total coupons to be received if note stays alive until maturity")
+            st.caption("📊 **Portfolio Return %:** Total expected coupons across all notes / Total notional invested")
+            st.caption("⚠️ **Note:** This assumes all notes stay alive (no KO/KI) and all coupons are paid")
             
             # === SECTION 6: STATUS BREAKDOWN ===
             st.markdown("---")
