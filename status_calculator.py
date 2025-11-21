@@ -92,8 +92,14 @@ def update_note_status(conn, note_id: int) -> str:
     """
     cursor = conn.cursor()
     
-    # Get note data
-    cursor.execute('SELECT * FROM structured_notes WHERE id = ?', (note_id,))
+    # Get note data - use %s for PostgreSQL, ? for SQLite
+    try:
+        # Try PostgreSQL syntax first
+        cursor.execute('SELECT * FROM structured_notes WHERE id = %s', (note_id,))
+    except:
+        # Fall back to SQLite syntax
+        cursor.execute('SELECT * FROM structured_notes WHERE id = ?', (note_id,))
+    
     row = cursor.fetchone()
     
     if not row:
@@ -106,11 +112,20 @@ def update_note_status(conn, note_id: int) -> str:
     new_status = calculate_note_status(note)
     
     # Update in database
-    cursor.execute('''
-        UPDATE structured_notes
-        SET current_status = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    ''', (new_status, note_id))
+    try:
+        # Try PostgreSQL syntax first
+        cursor.execute('''
+            UPDATE structured_notes
+            SET current_status = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        ''', (new_status, note_id))
+    except:
+        # Fall back to SQLite syntax
+        cursor.execute('''
+            UPDATE structured_notes
+            SET current_status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (new_status, note_id))
     
     conn.commit()
     
