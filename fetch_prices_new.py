@@ -134,7 +134,7 @@ def fetch_single_ticker_price(ticker: str) -> Tuple[str, Optional[float], Option
         return (ticker, None, "Failed to fetch from Yahoo Finance")
 
 
-def update_all_prices(conn, delay: float = 0.2, progress_callback=None) -> Tuple[int, int]:
+def update_all_prices(conn, delay: float = 0.2, progress_callback=None) -> Tuple[int, int, list]:
     """
     Update all underlying prices from Yahoo Finance with parallel fetching
     
@@ -144,7 +144,7 @@ def update_all_prices(conn, delay: float = 0.2, progress_callback=None) -> Tuple
         progress_callback: Optional callback function(current, total, ticker, status) for progress updates
     
     Returns:
-        Tuple of (updated_count, error_count)
+        Tuple of (updated_count, error_count, failed_tickers_with_isins)
     """
     cursor = conn.cursor()
     
@@ -170,6 +170,7 @@ def update_all_prices(conn, delay: float = 0.2, progress_callback=None) -> Tuple
     updated_count = 0
     error_count = 0
     completed = 0
+    failed_tickers = []
     
     # Use parallel fetching for speed (max 5 concurrent requests)
     with ThreadPoolExecutor(max_workers=5) as executor:
@@ -214,12 +215,35 @@ def update_all_prices(conn, delay: float = 0.2, progress_callback=None) -> Tuple
             else:
                 print(f"  ❌ {ticker}: {error}")
                 error_count += 1
+                
+                # Get ISINs for this failed ticker
+                try:
+                    if hasattr(conn, 'get_backend_pid'):
+                        cursor.execute('''
+                            SELECT DISTINCT sn.isin 
+                            FROM note_underlyings nu
+                            JOIN structured_notes sn ON nu.note_id = sn.id
+                            WHERE nu.underlying_ticker = %s
+                        ''', (ticker,))
+                    else:
+                        cursor.execute('''
+                            SELECT DISTINCT sn.isin 
+                            FROM note_underlyings nu
+                            JOIN structured_notes sn ON nu.note_id = sn.id
+                            WHERE nu.underlying_ticker = ?
+                        ''', (ticker,))
+                    
+                    isins = [row[0] if not isinstance(row, dict) else row['isin'] for row in cursor.fetchall()]
+                    isins_str = ', '.join([isin if isin else 'No ISIN' for isin in isins])
+                    failed_tickers.append(f"{ticker} (ISINs: {isins_str})")
+                except:
+                    failed_tickers.append(f"{ticker}")
     
     print(f"\n✅ Price update complete:")
     print(f"   Updated: {updated_count} positions")
     print(f"   Errors: {error_count} tickers")
     
-    return updated_count, error_count
+    return updated_count, error_count, failed_tickers
 
 
 if __name__ == "__main__":

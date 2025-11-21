@@ -134,32 +134,49 @@ def update_note_status(conn, note_id: int) -> str:
     return new_status
 
 
-def update_all_statuses(conn) -> int:
+def update_all_statuses(conn, progress_callback=None) -> tuple[int, list]:
     """
     Update status for all notes in database
     
+    Args:
+        conn: Database connection
+        progress_callback: Optional callback function(current, total, isin, status) for progress updates
+    
     Returns:
-        Number of notes updated
+        Tuple of (updated_count, failed_isins)
     """
     cursor = conn.cursor()
     
-    cursor.execute('SELECT id FROM structured_notes')
+    # Get all notes with their ISINs
+    cursor.execute('SELECT id, isin FROM structured_notes')
     rows = cursor.fetchall()
     
     # Handle both SQLite (tuple) and PostgreSQL (dict) row types
-    note_ids = []
+    notes_data = []
     for row in rows:
         if isinstance(row, dict):
-            note_ids.append(row['id'])
+            notes_data.append((row['id'], row.get('isin', 'No ISIN')))
         else:
-            note_ids.append(row[0])
+            notes_data.append((row[0], row[1] if row[1] else 'No ISIN'))
     
-    count = 0
-    for note_id in note_ids:
-        update_note_status(conn, note_id)
-        count += 1
+    total = len(notes_data)
+    updated_count = 0
+    failed_isins = []
     
-    return count
+    for idx, (note_id, isin) in enumerate(notes_data):
+        try:
+            update_note_status(conn, note_id)
+            updated_count += 1
+            
+            if progress_callback:
+                progress_callback(idx + 1, total, isin, "✅ Updated")
+        except Exception as e:
+            failed_isins.append(f"{isin} - {str(e)}")
+            
+            if progress_callback:
+                progress_callback(idx + 1, total, isin, f"❌ Failed")
+    
+    return updated_count, failed_isins
 
 
 if __name__ == "__main__":

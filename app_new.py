@@ -164,7 +164,7 @@ db = init_database()
 
 # Sidebar navigation
 st.sidebar.title("📊 Navigation")
-page = st.sidebar.radio("Menu", ["Dashboard", "Add New Note", "Import from Excel", "View Notes", "Edit Note", "Update Prices", "Settings"], label_visibility="collapsed")
+page = st.sidebar.radio("Menu", ["Dashboard", "Add New Note", "Import from Excel", "View Notes", "Edit Note", "Settings"], label_visibility="collapsed")
 
 # Show logout button if authenticated
 show_logout_button()
@@ -718,26 +718,55 @@ elif page == "View Notes":
         col1, col2, col3 = st.columns([1, 1, 3])
         with col1:
             if st.button("🔄 Refresh Statuses", use_container_width=True):
-                with st.spinner("Updating statuses..."):
-                    update_all_statuses(db.conn)
-                    st.success("✅ Statuses updated!")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                def update_status_progress(current, total, isin, status):
+                    progress_bar.progress(current / total)
+                    status_text.text(f"{current}/{total}: {isin} {status}")
+                
+                try:
+                    updated, failed = update_all_statuses(db.conn, progress_callback=update_status_progress)
+                    progress_bar.empty()
+                    status_text.empty()
+                    
+                    st.success(f"✅ Updated {updated} note statuses!")
+                    
+                    if failed:
+                        st.warning(f"⚠️ Failed to update {len(failed)} notes:")
+                        with st.expander("View Failed Updates"):
+                            for failure in failed:
+                                st.error(f"❌ {failure}")
+                    
+                    time.sleep(1)
                     st.rerun()
+                except Exception as e:
+                    progress_bar.empty()
+                    status_text.empty()
+                    st.error(f"❌ Error: {str(e)}")
+                    
         with col2:
             if st.button("💹 Update Prices", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                def update_progress(current, total, ticker, status):
+                def update_price_progress(current, total, ticker, status):
                     progress_bar.progress(current / total)
                     status_text.text(f"{current}/{total}: {ticker} {status}")
                 
                 try:
-                    updated, errors = update_all_prices(db.conn, delay=0.2, progress_callback=update_progress)
+                    updated, errors, failed = update_all_prices(db.conn, delay=0.2, progress_callback=update_price_progress)
                     progress_bar.empty()
                     status_text.empty()
-                    st.success(f"✅ Updated {updated} prices!")
+                    
+                    st.success(f"✅ Updated {updated} underlying positions!")
+                    
                     if errors > 0:
-                        st.warning(f"⚠️ Failed to update {errors} tickers")
+                        st.warning(f"⚠️ Failed to update {errors} tickers:")
+                        with st.expander("View Failed Tickers"):
+                            for failure in failed:
+                                st.error(f"❌ {failure}")
+                    
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
@@ -1136,46 +1165,7 @@ elif page == "Edit Note":
         st.info("No notes in database to edit.")
 
 # ============================================================================
-# PAGE 6: UPDATE PRICES
-# ============================================================================
-elif page == "Update Prices":
-    st.title("💹 Update Prices from Yahoo Finance")
-    
-    st.info("This will fetch current prices for all underlyings from Yahoo Finance using parallel processing")
-    
-    if st.button("🔄 Update All Prices", type="primary", use_container_width=True):
-        # Create progress display
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        ticker_status = st.empty()
-        
-        def update_progress(current, total, ticker, status):
-            progress_bar.progress(current / total)
-            status_text.text(f"Processing: {current}/{total} tickers")
-            ticker_status.text(f"Current: {ticker} - {status}")
-        
-        try:
-            updated, errors = update_all_prices(db.conn, delay=0.2, progress_callback=update_progress)
-            
-            # Clear progress indicators
-            progress_bar.empty()
-            status_text.empty()
-            ticker_status.empty()
-            
-            # Show results
-            st.success(f"✅ Updated {updated} underlying positions")
-            if errors > 0:
-                st.warning(f"⚠️ Failed to update {errors} tickers")
-            
-            st.info("💡 Go to 'View Notes' to see updated prices with Singapore timezone!")
-        except Exception as e:
-            progress_bar.empty()
-            status_text.empty()
-            ticker_status.empty()
-            st.error(f"❌ Error: {str(e)}")
-
-# ============================================================================
-# PAGE 7: SETTINGS
+# PAGE 6: SETTINGS
 # ============================================================================
 elif page == "Settings":
     st.title("⚙️ Settings")
