@@ -8,6 +8,7 @@ import sqlite3
 from typing import Dict, Optional, Tuple
 import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def clean_ticker_for_yahoo(ticker: str) -> Optional[str]:
@@ -81,13 +82,34 @@ def fetch_price_from_yahoo(ticker: str) -> Optional[float]:
         return None
 
 
-def update_all_prices(conn, delay: float = 0.2) -> Tuple[int, int]:
+def fetch_single_ticker_price(ticker: str) -> Tuple[str, Optional[float], Optional[str]]:
     """
-    Update all underlying prices from Yahoo Finance
+    Fetch price for a single ticker (for parallel processing)
+    
+    Returns:
+        Tuple of (ticker, price, error_message)
+    """
+    yahoo_ticker = clean_ticker_for_yahoo(ticker)
+    
+    if not yahoo_ticker:
+        return (ticker, None, "Could not parse ticker")
+    
+    price = fetch_price_from_yahoo(yahoo_ticker)
+    
+    if price:
+        return (ticker, price, None)
+    else:
+        return (ticker, None, "Failed to fetch from Yahoo Finance")
+
+
+def update_all_prices(conn, delay: float = 0.2, progress_callback=None) -> Tuple[int, int]:
+    """
+    Update all underlying prices from Yahoo Finance with parallel fetching
     
     Args:
         conn: Database connection
-        delay: Delay between API calls (seconds) to avoid rate limiting
+        delay: Delay between API calls (seconds) to avoid rate limiting (not used in parallel mode)
+        progress_callback: Optional callback function(current, total, ticker, status) for progress updates
     
     Returns:
         Tuple of (updated_count, error_count)
@@ -110,67 +132,56 @@ def update_all_prices(conn, delay: float = 0.2) -> Tuple[int, int]:
         else:
             tickers.append(row[0])
     
-    print(f"🔄 Updating prices for {len(tickers)} unique tickers...")
+    total_tickers = len(tickers)
+    print(f"🔄 Updating prices for {total_tickers} unique tickers...")
     
-    price_cache = {}
     updated_count = 0
     error_count = 0
+    completed = 0
     
-    for ticker in tickers:
-        # Clean ticker for Yahoo Finance
-        yahoo_ticker = clean_ticker_for_yahoo(ticker)
+    # Use parallel fetching for speed (max 5 concurrent requests)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        # Submit all fetch tasks
+        future_to_ticker = {executor.submit(fetch_single_ticker_price, ticker): ticker for ticker in tickers}
         
-        if not yahoo_ticker:
-            print(f"  ⚠️ Skipping {ticker}: Could not parse ticker")
-            error_count += 1
-            continue
-        
-        # Check cache first
-        if yahoo_ticker in price_cache:
-            price = price_cache[yahoo_ticker]
-        else:
-            print(f"  Fetching {yahoo_ticker}...", end=" ")
-            price = fetch_price_from_yahoo(yahoo_ticker)
+        # Process results as they complete
+        for future in as_completed(future_to_ticker):
+            ticker, price, error = future.result()
+            completed += 1
+            
+            if progress_callback:
+                status = f"✅ ${price:.2f}" if price else f"❌ {error}"
+                progress_callback(completed, total_tickers, ticker, status)
             
             if price:
-                price_cache[yahoo_ticker] = price
-                print(f"✅ ${price:.2f}")
+                print(f"  ✅ {ticker}: ${price:.2f}")
+                
+                # Update database
+                try:
+                    # Detect database type
+                    if hasattr(conn, 'get_backend_pid'):
+                        # PostgreSQL
+                        cursor.execute('''
+                            UPDATE note_underlyings
+                            SET last_close_price = %s, last_price_update = CURRENT_TIMESTAMP
+                            WHERE underlying_ticker = %s
+                        ''', (price, ticker))
+                    else:
+                        # SQLite
+                        cursor.execute('''
+                            UPDATE note_underlyings
+                            SET last_close_price = ?, last_price_update = CURRENT_TIMESTAMP
+                            WHERE underlying_ticker = ?
+                        ''', (price, ticker))
+                    
+                    updated_count += cursor.rowcount
+                    conn.commit()  # Commit after each update
+                except Exception as e:
+                    print(f"  ⚠️ Database update failed for {ticker}: {e}")
+                    error_count += 1
             else:
-                print(f"❌ Failed")
+                print(f"  ❌ {ticker}: {error}")
                 error_count += 1
-            
-            time.sleep(delay)  # Rate limiting
-        
-        if price:
-            # Update all rows with this ticker
-            # Detect database type
-            try:
-                # Try to detect PostgreSQL
-                if hasattr(conn, 'get_backend_pid'):
-                    # PostgreSQL
-                    cursor.execute('''
-                        UPDATE note_underlyings
-                        SET last_close_price = %s, last_price_update = CURRENT_TIMESTAMP
-                        WHERE underlying_ticker = %s
-                    ''', (price, ticker))
-                else:
-                    # SQLite
-                    cursor.execute('''
-                        UPDATE note_underlyings
-                        SET last_close_price = ?, last_price_update = CURRENT_TIMESTAMP
-                        WHERE underlying_ticker = ?
-                    ''', (price, ticker))
-            except:
-                # Fallback to SQLite
-                cursor.execute('''
-                    UPDATE note_underlyings
-                    SET last_close_price = ?, last_price_update = CURRENT_TIMESTAMP
-                    WHERE underlying_ticker = ?
-                ''', (price, ticker))
-            
-            updated_count += cursor.rowcount
-    
-    conn.commit()
     
     print(f"\n✅ Price update complete:")
     print(f"   Updated: {updated_count} positions")

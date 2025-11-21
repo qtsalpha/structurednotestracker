@@ -23,6 +23,7 @@ from payment_date_generator import generate_payment_dates, format_dates_for_stor
 from auth import check_password, show_logout_button
 from export_utils import prepare_notes_for_export, export_to_csv, export_to_excel, get_export_filename, export_notes_with_underlyings
 from import_utils import validate_excel_columns, parse_excel_to_notes, get_excel_template_dataframe
+import time
 
 # Page configuration
 st.set_page_config(
@@ -723,15 +724,26 @@ elif page == "View Notes":
                     st.rerun()
         with col2:
             if st.button("💹 Update Prices", use_container_width=True):
-                with st.spinner("Fetching prices from Yahoo Finance... This may take a minute."):
-                    try:
-                        updated, errors = update_all_prices(db.conn, delay=0.2)
-                        st.success(f"✅ Updated {updated} prices!")
-                        if errors > 0:
-                            st.warning(f"⚠️ Failed to update {errors} tickers")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error: {str(e)}")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                def update_progress(current, total, ticker, status):
+                    progress_bar.progress(current / total)
+                    status_text.text(f"{current}/{total}: {ticker} {status}")
+                
+                try:
+                    updated, errors = update_all_prices(db.conn, delay=0.2, progress_callback=update_progress)
+                    progress_bar.empty()
+                    status_text.empty()
+                    st.success(f"✅ Updated {updated} prices!")
+                    if errors > 0:
+                        st.warning(f"⚠️ Failed to update {errors} tickers")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    progress_bar.empty()
+                    status_text.empty()
+                    st.error(f"❌ Error: {str(e)}")
         
         # Calculate coupon columns for each note
         expected_coupons = []
@@ -1129,17 +1141,38 @@ elif page == "Edit Note":
 elif page == "Update Prices":
     st.title("💹 Update Prices from Yahoo Finance")
     
-    st.info("This will fetch current prices for all underlyings from Yahoo Finance")
+    st.info("This will fetch current prices for all underlyings from Yahoo Finance using parallel processing")
     
     if st.button("🔄 Update All Prices", type="primary", use_container_width=True):
-        with st.spinner("Fetching prices from Yahoo Finance... This may take a few minutes."):
-            try:
-                updated, errors = update_all_prices(db.conn, delay=0.2)
-                st.success(f"✅ Updated {updated} underlying positions")
-                if errors > 0:
-                    st.warning(f"⚠️ Failed to update {errors} underlyings")
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+        # Create progress display
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        ticker_status = st.empty()
+        
+        def update_progress(current, total, ticker, status):
+            progress_bar.progress(current / total)
+            status_text.text(f"Processing: {current}/{total} tickers")
+            ticker_status.text(f"Current: {ticker} - {status}")
+        
+        try:
+            updated, errors = update_all_prices(db.conn, delay=0.2, progress_callback=update_progress)
+            
+            # Clear progress indicators
+            progress_bar.empty()
+            status_text.empty()
+            ticker_status.empty()
+            
+            # Show results
+            st.success(f"✅ Updated {updated} underlying positions")
+            if errors > 0:
+                st.warning(f"⚠️ Failed to update {errors} tickers")
+            
+            st.info("💡 Go to 'View Notes' to see updated prices with Singapore timezone!")
+        except Exception as e:
+            progress_bar.empty()
+            status_text.empty()
+            ticker_status.empty()
+            st.error(f"❌ Error: {str(e)}")
 
 # ============================================================================
 # PAGE 7: SETTINGS
@@ -1225,5 +1258,9 @@ elif page == "Settings":
 
 # Footer
 st.markdown("---")
-st.markdown("📱 **Structured Notes Tracking System** | Built with Streamlit")
+col1, col2, col3 = st.columns([2, 2, 1])
+with col1:
+    st.markdown("📱 **Structured Notes Tracking System** | Built with Streamlit")
+with col2:
+    st.markdown("**Created by:** Benjamin Yong | **Version:** 1.0 | **November 2025**")
 
