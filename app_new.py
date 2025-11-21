@@ -23,6 +23,7 @@ from payment_date_generator import generate_payment_dates, format_dates_for_stor
 from auth import check_password, show_logout_button
 from export_utils import prepare_notes_for_export, export_to_csv, export_to_excel, get_export_filename, export_notes_with_underlyings
 from import_utils import validate_excel_columns, parse_excel_to_notes, get_excel_template_dataframe
+from barrier_checker import check_all_barriers
 import time
 
 # Page configuration
@@ -669,9 +670,40 @@ elif page == "View Notes":
         
         # Global action buttons at top
         st.markdown("### 🔄 Global Actions")
-        col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
         
         with col1:
+            if st.button("🎯 Check Barriers", use_container_width=True, type="primary"):
+                progress_text = st.empty()
+                
+                try:
+                    progress_text.text("🔍 Checking KO/KI barriers and conversions...")
+                    ko_count, ki_count, conv_count, details = check_all_barriers(db.conn)
+                    progress_text.empty()
+                    
+                    if ko_count > 0 or ki_count > 0 or conv_count > 0:
+                        st.success(f"✅ Barrier check complete! KO: {ko_count} | KI: {ki_count} | Converted: {conv_count}")
+                        
+                        with st.expander("📋 View Barrier Events"):
+                            for detail in details:
+                                if "KO:" in detail:
+                                    st.error(detail)
+                                elif "KI:" in detail:
+                                    st.warning(detail)
+                                elif "Converted" in detail or "✅" in detail:
+                                    st.info(detail)
+                                else:
+                                    st.write(detail)
+                        
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.info("ℹ️ No barrier breaches detected")
+                except Exception as e:
+                    progress_text.empty()
+                    st.error(f"❌ Error checking barriers: {str(e)}")
+        
+        with col2:
             if st.button("🔄 Refresh Statuses", use_container_width=True, type="secondary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -729,7 +761,7 @@ elif page == "View Notes":
                     status_text.empty()
                     st.error(f"❌ Error: {str(e)}")
         
-        with col3:
+        with col4:
             # Export to CSV
             csv_data = export_to_csv(prepare_notes_for_export(all_notes))
             st.download_button(
@@ -746,11 +778,12 @@ elif page == "View Notes":
         status_counts = df_all['current_status'].value_counts().to_dict()
         
         # Create tabs for each status category
-        tab_alive, tab_not_obs, tab_ko, tab_ki, tab_ended = st.tabs([
+        tab_alive, tab_not_obs, tab_ko, tab_ki, tab_converted, tab_ended = st.tabs([
             f"🟢 Alive ({status_counts.get('Alive', 0)})",
             f"⏳ Not Observed Yet ({status_counts.get('Not Observed Yet', 0)})",
             f"🔴 Knocked Out ({status_counts.get('Knocked Out', 0)})",
             f"🟠 Knocked In ({status_counts.get('Knocked In', 0)})",
+            f"🔄 Converted ({status_counts.get('Converted', 0)})",
             f"⚫ Ended ({status_counts.get('Ended', 0)})"
         ])
         
@@ -926,6 +959,7 @@ elif page == "View Notes":
         render_status_tab('Not Observed Yet', tab_not_obs)
         render_status_tab('Knocked Out', tab_ko)
         render_status_tab('Knocked In', tab_ki)
+        render_status_tab('Converted', tab_converted)
         render_status_tab('Ended', tab_ended)
     else:
         st.info("No notes in database yet.")
