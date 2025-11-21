@@ -1,0 +1,42 @@
+# Streamlit Configuration for Structured Notes Tracker
+# Professional theme and settings
+
+[theme]
+# Primary colors
+primaryColor = "#1e3a8a"  # Deep blue for buttons and highlights
+backgroundColor = "#ffffff"  # White background
+secondaryBackgroundColor = "#f8fafc"  # Light gray for cards
+textColor = "#1f2937"  # Dark gray for text
+font = "sans serif"
+
+[server]
+# Server configuration
+headless = true
+port = 8501
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+# Browser configuration
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
+[runner]
+# Performance settings
+magicEnabled = true
+fastReruns = true
+
+[client]
+# Client settings
+showErrorDetails = true
+toolbarMode = "auto"
+
+[logger]
+# Logging level
+level = "info"
+
+[deprecation]
+# Deprecation warnings
+showfileUploaderEncoding = false
+showPyplotGlobalUse = false
