@@ -967,22 +967,22 @@ elif page == "Import from Excel":
                                             continue
                                     
                                     try:
-                                    # Reconnect to database for each import to avoid connection timeout
-                                    try:
-                                        db.conn.ping(reconnect=True)  # For MySQL
-                                    except:
-                                        # For PostgreSQL, check connection and reconnect if needed
+                                        # Reconnect to database for each import to avoid connection timeout
                                         try:
-                                            db.conn.cursor().execute('SELECT 1')
+                                            db.conn.ping(reconnect=True)  # For MySQL
                                         except:
-                                            # Reconnect if connection is closed
-                                            db.connect()
-                                    
-                                    # Insert note
-                                    note_id = db.insert_structured_note(note, underlyings)
-                                    imported_count += 1
-                                    status_text.text(f"Importing... {imported_count}/{len(notes)}")
-                                except Exception as e:
+                                            # For PostgreSQL, check connection and reconnect if needed
+                                            try:
+                                                db.conn.cursor().execute('SELECT 1')
+                                            except:
+                                                # Reconnect if connection is closed
+                                                db.connect()
+                                        
+                                        # Insert note
+                                        note_id = db.insert_structured_note(note, underlyings)
+                                        imported_count += 1
+                                        status_text.text(f"Importing... {imported_count}/{len(notes)}")
+                                    except Exception as e:
                                     failed_count += 1
                                     error_msg = f"Row {note.get('row_number', idx+2)}: {str(e)}"
                                     failed_rows.append(error_msg)
