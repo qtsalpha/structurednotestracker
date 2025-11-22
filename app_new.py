@@ -400,12 +400,47 @@ elif page == "Client Portfolio":
             from datetime import datetime, timedelta
             today = date.today()
             
-            ki_breached = []  # Already at or below KI
+            existing_ki = []  # Already marked as KI
+            ki_breached = []  # Already at or below KI but not marked
             ki_near_breach = []  # Within 5% of KI
             
             for note in client_notes:
-                # Skip if already marked as KI, KO, or Ended
-                if note['current_status'] in ['Knocked In', 'Knocked Out', 'Ended', 'Converted']:
+                try:
+                    final_val = datetime.strptime(note['final_valuation_date'], '%Y-%m-%d').date()
+                    days_to_maturity = (final_val - today).days
+                except:
+                    continue
+                
+                note_id = int(note['id'])
+                note_details = db.get_note_with_underlyings(note_id)
+                
+                # Determine KI determination date
+                ki_type = note.get('ki_type', 'Daily')
+                
+                if ki_type == 'EKI':
+                    ki_determination = f"Final date only ({note['final_valuation_date']})"
+                else:
+                    ki_determination = "Daily monitoring"
+                
+                # If already marked as Knocked In, show in existing KI section
+                if note['current_status'] == 'Knocked In':
+                    for u in note_details['underlyings']:
+                        if u.get('last_close_price') and u.get('ki_price'):
+                            existing_ki.append({
+                                'ISIN': note.get('isin', 'No ISIN'),
+                                'Product': note['type_of_structured_product'],
+                                'Underlying': u['underlying_ticker'],
+                                'Current': u['last_close_price'],
+                                'KI Barrier': u['ki_price'],
+                                '% vs KI': ((u['last_close_price'] - u['ki_price']) / u['ki_price']) * 100,
+                                'Days to Maturity': days_to_maturity,
+                                'KI Date': note.get('ki_event_date', 'Not recorded'),
+                                'Status': '🔴 Knocked In'
+                            })
+                    continue
+                
+                # Skip other terminal statuses
+                if note['current_status'] in ['Knocked Out', 'Ended', 'Converted']:
                     continue
                 
                 try:
@@ -504,10 +539,31 @@ elif page == "Client Portfolio":
                 st.caption("⚠️ **Remember:** If ANY ONE of these underlyings hits KI, the entire note becomes Knocked In!")
                 st.caption("💡 Monitor daily and update prices frequently for these high-risk positions")
             
+            # Display existing KI notes
+            if existing_ki:
+                st.info(f"ℹ️ Current KI Positions: {len(existing_ki)} underlying position(s) from {len(set([item['ISIN'] for item in existing_ki]))} note(s)")
+                
+                df_existing = pd.DataFrame(existing_ki)
+                df_existing = df_existing.sort_values('% vs KI')
+                
+                # Format for display
+                df_existing['Current'] = df_existing['Current'].apply(lambda x: f"${x:.2f}")
+                df_existing['KI Barrier'] = df_existing['KI Barrier'].apply(lambda x: f"${x:.2f}")
+                df_existing['% vs KI'] = df_existing['% vs KI'].apply(lambda x: f"{x:.2f}%")
+                
+                with st.expander("📋 View Existing KI Notes"):
+                    st.dataframe(df_existing[['ISIN', 'Product', 'Underlying', 'Current', 'KI Barrier', 
+                                             '% vs KI', 'Days to Maturity', 'KI Date']], 
+                               use_container_width=True, hide_index=True)
+                    st.caption("These notes are already marked as Knocked In and will convert to shares if below strike at maturity")
+            
             # All clear
             if not ki_breached and not ki_near_breach:
-                st.success("✅ No KI risks detected")
-                st.caption("All active notes have all underlyings well above KI barriers or have sufficient time to maturity")
+                if not existing_ki:
+                    st.success("✅ No KI risks detected")
+                    st.caption("All active notes have all underlyings well above KI barriers or have sufficient time to maturity")
+                else:
+                    st.success("✅ No new KI risks detected for active notes")
             
             # === SECTION 5: RETURN ESTIMATE ===
             st.markdown("---")
