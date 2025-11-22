@@ -544,7 +544,7 @@ elif page == "Client Portfolio":
                 st.caption("💡 Monitor daily and update prices frequently for these high-risk positions")
             
             # All clear message
-            if not ki_notes_in_observation and not ki_breached and not ki_near_breach:
+            if not ki_notes_in_observation and not ki_near_breach:
                 st.success("✅ No KI risks detected")
                 st.caption("All notes have all underlyings well above KI barriers or have sufficient time to maturity")
             
