@@ -1339,7 +1339,7 @@ elif page == "View Notes":
                     status_text.empty()
                     st.error(f"❌ Error: {str(e)}")
         
-        with col4:
+        with col3:
             # Export to CSV
             csv_data = export_to_csv(prepare_notes_for_export(all_notes))
             st.download_button(
