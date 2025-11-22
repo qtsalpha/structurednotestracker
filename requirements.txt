@@ -27,4 +27,8 @@ streamlit-authenticator>=0.2.3
 # Environment Variables
 python-dotenv>=1.0.0
 
+# AI/LLM APIs (optional - for termsheet extraction)
+anthropic>=0.18.0  # Claude API
+openai>=1.12.0  # OpenAI GPT-4 API
+
 

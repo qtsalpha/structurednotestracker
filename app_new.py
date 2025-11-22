@@ -25,6 +25,7 @@ from export_utils import prepare_notes_for_export, export_to_csv, export_to_exce
 from import_utils import validate_excel_columns, parse_excel_to_notes, get_excel_template_dataframe
 from excel_templates import get_fcn_template, get_phoenix_template, get_ben_template
 from barrier_checker import check_all_barriers
+from ai_extractor import extract_text_from_pdf, extract_note_data_with_claude, extract_note_data_with_openai
 import time
 
 # Page configuration
@@ -166,7 +167,7 @@ db = init_database()
 
 # Sidebar navigation
 st.sidebar.title("📊 Navigation")
-page = st.sidebar.radio("Menu", ["Dashboard", "Client Portfolio", "Add New Note", "Import from Excel", "View Notes", "Edit Note", "Settings"], label_visibility="collapsed")
+page = st.sidebar.radio("Menu", ["Dashboard", "Client Portfolio", "Add New Note", "AI Extract from PDF", "Import from Excel", "View Notes", "Edit Note", "Settings"], label_visibility="collapsed")
 
 # Show logout button if authenticated
 show_logout_button()
@@ -562,7 +563,137 @@ elif page == "Client Portfolio":
         st.info("No notes in database yet.")
 
 # ============================================================================
-# PAGE 3: ADD NEW NOTE
+# PAGE 3: AI EXTRACT FROM PDF
+# ============================================================================
+elif page == "AI Extract from PDF":
+    st.title("🤖 AI-Powered Termsheet Extraction")
+    
+    st.info("💡 Upload a termsheet PDF and AI will automatically extract all the data!")
+    
+    # API Key input
+    st.subheader("🔑 Step 1: API Key")
+    
+    # Check if API key is in secrets
+    claude_api_key = os.getenv('CLAUDE_API_KEY', '')
+    openai_api_key = os.getenv('OPENAI_API_KEY', '')
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        use_claude = st.checkbox("Use Claude API", value=bool(claude_api_key))
+        if use_claude:
+            if not claude_api_key:
+                claude_api_key = st.text_input("Claude API Key", type="password",
+                                              help="Get from: https://console.anthropic.com/")
+    
+    with col2:
+        use_openai = st.checkbox("Use OpenAI API", value=bool(openai_api_key))
+        if use_openai:
+            if not openai_api_key:
+                openai_api_key = st.text_input("OpenAI API Key", type="password",
+                                              help="Get from: https://platform.openai.com/api-keys")
+    
+    if not use_claude and not use_openai:
+        st.warning("⚠️ Please select and configure at least one AI provider")
+        st.markdown("**How to get API keys:**")
+        st.markdown("- **Claude:** https://console.anthropic.com/ (Recommended)")
+        st.markdown("- **OpenAI:** https://platform.openai.com/api-keys")
+        st.stop()
+    
+    # PDF Upload
+    st.markdown("---")
+    st.subheader("📄 Step 2: Upload Termsheet PDF")
+    
+    uploaded_pdf = st.file_uploader(
+        "Choose a termsheet PDF",
+        type=['pdf'],
+        help="Upload the termsheet PDF for AI extraction"
+    )
+    
+    if uploaded_pdf is not None:
+        st.success(f"✅ PDF uploaded: {uploaded_pdf.name}")
+        
+        if st.button("🤖 Extract Data with AI", type="primary", use_container_width=True):
+            with st.spinner("🔍 Extracting text from PDF..."):
+                pdf_text = extract_text_from_pdf(uploaded_pdf)
+            
+            if "Error" in pdf_text:
+                st.error(pdf_text)
+            else:
+                st.success(f"✅ Extracted {len(pdf_text)} characters from PDF")
+                
+                with st.expander("📄 View Extracted Text (First 1000 chars)"):
+                    st.text(pdf_text[:1000])
+                
+                # Call AI API
+                extracted_data = None
+                
+                if use_claude and claude_api_key:
+                    with st.spinner("🤖 Claude is analyzing termsheet..."):
+                        extracted_data = extract_note_data_with_claude(pdf_text, claude_api_key)
+                
+                elif use_openai and openai_api_key:
+                    with st.spinner("🤖 GPT-4 is analyzing termsheet..."):
+                        extracted_data = extract_note_data_with_openai(pdf_text, openai_api_key)
+                
+                if extracted_data:
+                    st.success("✅ AI extraction successful!")
+                    
+                    # Display extracted data
+                    st.subheader("📊 Extracted Data")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.json({k: v for k, v in extracted_data.items() if k != 'underlyings'})
+                    
+                    with col2:
+                        if 'underlyings' in extracted_data:
+                            st.write("**Underlyings:**")
+                            for idx, u in enumerate(extracted_data['underlyings']):
+                                st.json({f"Underlying {idx+1}": u})
+                    
+                    # Option to use this data
+                    st.markdown("---")
+                    st.info("💡 You can now copy this data and paste it into 'Add New Note' form, or use the JSON for Excel import")
+                    
+                    # Download as JSON
+                    json_data = json.dumps(extracted_data, indent=2)
+                    st.download_button(
+                        label="💾 Download as JSON",
+                        data=json_data,
+                        file_name=f"extracted_{uploaded_pdf.name.replace('.pdf', '.json')}",
+                        mime="application/json"
+                    )
+                else:
+                    st.error("❌ AI extraction failed. Please check your API key and try again.")
+    else:
+        st.info("👆 Please upload a termsheet PDF to begin extraction")
+        
+        # Show benefits
+        with st.expander("🌟 Benefits of AI Extraction"):
+            st.markdown("""
+            **Why use AI extraction?**
+            - ⚡ **Save 10+ minutes** per note (no manual data entry)
+            - ✅ **Reduce errors** (no typos or wrong numbers)
+            - 📊 **Extract complex data** (all underlyings, barriers, dates)
+            - 🤖 **Understands structure** (FCN vs Phoenix vs BEN)
+            - 🔄 **Bulk processing** (extract multiple termsheets)
+            
+            **How it works:**
+            1. Upload termsheet PDF
+            2. AI reads and understands the document
+            3. Extracts all relevant fields
+            4. Returns structured JSON data
+            5. Copy to Add Note form or import
+            
+            **Cost:**
+            - Claude: ~$0.01 per termsheet
+            - OpenAI GPT-4: ~$0.02 per termsheet
+            """)
+
+# ============================================================================
+# PAGE 4: ADD NEW NOTE
 # ============================================================================
 elif page == "Add New Note":
     st.title("➕ Add New Structured Note")
