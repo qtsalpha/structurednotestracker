@@ -983,9 +983,9 @@ elif page == "Import from Excel":
                                         imported_count += 1
                                         status_text.text(f"Importing... {imported_count}/{len(notes)}")
                                     except Exception as e:
-                                    failed_count += 1
-                                    error_msg = f"Row {note.get('row_number', idx+2)}: {str(e)}"
-                                    failed_rows.append(error_msg)
+                                        failed_count += 1
+                                        error_msg = f"Row {note.get('row_number', idx+2)}: {str(e)}"
+                                        failed_rows.append(error_msg)
                                 
                                 # Update progress
                                 progress_bar.progress((idx + 1) / len(notes))
