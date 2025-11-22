@@ -486,12 +486,8 @@ elif page == "Client Portfolio":
                         'Final Val': note['final_valuation_date']
                     }
                     
-                    # Categorize risk
-                    if pct_above_ki <= 0:
-                        # Already breached!
-                        risk_data['Risk Level'] = '🔴 BREACHED'
-                        ki_breached.append(risk_data)
-                    elif 0 < pct_above_ki <= 5 and days_to_maturity <= 30:
+                    # Categorize risk - only near-breach for active notes
+                    if 0 < pct_above_ki <= 5 and days_to_maturity <= 30:
                         # Close to breach and near maturity
                         risk_data['Risk Level'] = '🟠 HIGH RISK'
                         ki_near_breach.append(risk_data)
