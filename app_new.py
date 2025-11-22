@@ -521,29 +521,6 @@ elif page == "Client Portfolio":
                 st.caption("💡 Monitor these closely until Final Valuation Date")
             
             # Section 2: Near-Breach Risks (Secondary Focus)
-            if ki_breached:
-                # Count unique ISINs affected
-                affected_isins = set([item['ISIN'] for item in ki_breached])
-                
-                st.error(f"🔴 CRITICAL: {len(ki_breached)} underlying position(s) AT OR BELOW KI barrier!")
-                st.error(f"📋 Affects {len(affected_isins)} note(s) - If ANY ONE underlying breaches KI, the entire note is Knocked In!")
-                
-                df_breached = pd.DataFrame(ki_breached)
-                df_breached = df_breached.sort_values('% vs KI')
-                
-                # Format for display
-                df_breached['Current'] = df_breached['Current'].apply(lambda x: f"${x:.2f}")
-                df_breached['KI Barrier'] = df_breached['KI Barrier'].apply(lambda x: f"${x:.2f}")
-                df_breached['% vs KI'] = df_breached['% vs KI'].apply(lambda x: f"{x:.2f}%")
-                
-                st.dataframe(df_breached[['ISIN', 'Product', 'Underlying', 'Current', 'KI Barrier', 
-                                         '% vs KI', 'Days to Maturity', 'KI Date']], 
-                           use_container_width=True, hide_index=True)
-                
-                st.caption("🚨 **KI Rule:** ANY ONE underlying at/below KI → Entire note is Knocked In!")
-                st.caption("💡 Click '🔄 Refresh All' to automatically mark these notes as Knocked In")
-            
-            # Display near-breach risks
             if ki_near_breach:
                 # Count unique ISINs
                 affected_isins = set([item['ISIN'] for item in ki_near_breach])
