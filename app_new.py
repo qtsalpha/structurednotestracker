@@ -460,7 +460,11 @@ elif page == "Client Portfolio":
             
             # Display breached KI first (most critical)
             if ki_breached:
-                st.error(f"🔴 CRITICAL: {len(ki_breached)} underlyings AT OR BELOW KI barrier!")
+                # Count unique ISINs affected
+                affected_isins = set([item['ISIN'] for item in ki_breached])
+                
+                st.error(f"🔴 CRITICAL: {len(ki_breached)} underlying position(s) AT OR BELOW KI barrier!")
+                st.error(f"📋 Affects {len(affected_isins)} note(s) - If ANY ONE underlying breaches KI, the entire note is Knocked In!")
                 
                 df_breached = pd.DataFrame(ki_breached)
                 df_breached = df_breached.sort_values('% vs KI')
@@ -474,11 +478,16 @@ elif page == "Client Portfolio":
                                          '% vs KI', 'Days to Maturity', 'KI Date']], 
                            use_container_width=True, hide_index=True)
                 
-                st.caption("🚨 These underlyings have ALREADY breached KI barrier! Check if KI event should be recorded.")
+                st.caption("🚨 **KI Rule:** ANY ONE underlying at/below KI → Entire note is Knocked In!")
+                st.caption("💡 Click '🔄 Refresh All' to automatically mark these notes as Knocked In")
             
             # Display near-breach risks
             if ki_near_breach:
-                st.warning(f"🟠 WARNING: {len(ki_near_breach)} underlyings within 5% of KI (< 30 days to maturity)")
+                # Count unique ISINs
+                affected_isins = set([item['ISIN'] for item in ki_near_breach])
+                
+                st.warning(f"🟠 WARNING: {len(ki_near_breach)} underlying position(s) within 5% of KI barrier!")
+                st.warning(f"📋 Affects {len(affected_isins)} note(s) with < 30 days to maturity")
                 
                 df_near = pd.DataFrame(ki_near_breach)
                 df_near = df_near.sort_values('% vs KI')
@@ -492,12 +501,13 @@ elif page == "Client Portfolio":
                                      '% vs KI', 'Days to Maturity', 'KI Date']], 
                            use_container_width=True, hide_index=True)
                 
-                st.caption("⚠️ Monitor these underlyings closely - approaching KI barrier!")
+                st.caption("⚠️ **Remember:** If ANY ONE of these underlyings hits KI, the entire note becomes Knocked In!")
+                st.caption("💡 Monitor daily and update prices frequently for these high-risk positions")
             
             # All clear
             if not ki_breached and not ki_near_breach:
                 st.success("✅ No KI risks detected")
-                st.caption("All active notes are well above KI barriers or have sufficient time to maturity")
+                st.caption("All active notes have all underlyings well above KI barriers or have sufficient time to maturity")
             
             # === SECTION 5: RETURN ESTIMATE ===
             st.markdown("---")
