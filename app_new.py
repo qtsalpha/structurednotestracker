@@ -395,70 +395,109 @@ elif page == "Client Portfolio":
             # === SECTION 4: KI RISK ALERT ===
             st.markdown("---")
             st.subheader("⚠️ KI Risk Alert")
-            st.info("Notes at risk: Within 5% of KI barrier AND less than 1 month to maturity")
             
             # Calculate KI risk
             from datetime import datetime, timedelta
             today = date.today()
-            one_month_from_now = today + timedelta(days=30)
             
-            ki_risk_notes = []
+            ki_breached = []  # Already at or below KI
+            ki_near_breach = []  # Within 5% of KI
             
             for note in client_notes:
-                # Skip if already KI or KO or Ended
-                if note['current_status'] not in ['Alive', 'Not Observed Yet']:
+                # Skip if already marked as KI, KO, or Ended
+                if note['current_status'] in ['Knocked In', 'Knocked Out', 'Ended', 'Converted']:
                     continue
                 
-                # Check if within 1 month of maturity
                 try:
                     final_val = datetime.strptime(note['final_valuation_date'], '%Y-%m-%d').date()
-                    if final_val > one_month_from_now:
-                        continue  # More than 1 month away
+                    days_to_maturity = (final_val - today).days
                 except:
                     continue
                 
                 note_id = int(note['id'])
                 note_details = db.get_note_with_underlyings(note_id)
                 
+                # Determine KI determination date based on product type
+                ki_type = note.get('ki_type', 'Daily')
+                product_type = note['type_of_structured_product']
+                
+                if ki_type == 'EKI':
+                    ki_determination = f"Final date only ({note['final_valuation_date']})"
+                    ki_status_text = "EKI - Final date only"
+                else:
+                    ki_determination = "Daily monitoring"
+                    ki_status_text = "Daily KI"
+                
                 # Check each underlying
                 for u in note_details['underlyings']:
                     if not u['ki_price'] or not u['last_close_price']:
                         continue
                     
-                    # Calculate how close to KI (percentage above KI)
+                    # Calculate distance from KI
                     pct_above_ki = ((u['last_close_price'] - u['ki_price']) / u['ki_price']) * 100
                     
-                    # If within 5% of KI barrier
-                    if 0 < pct_above_ki <= 5:
-                        days_to_maturity = (final_val - today).days
-                        
-                        ki_risk_notes.append({
-                            'ISIN': note.get('isin', 'No ISIN'),
-                            'Product': note['type_of_structured_product'],
-                            'Underlying': u['underlying_ticker'],
-                            'Current Price': u['last_close_price'],
-                            'KI Price': u['ki_price'],
-                            '% Above KI': pct_above_ki,
-                            'Days to Maturity': days_to_maturity,
-                            'Final Val Date': note['final_valuation_date']
-                        })
+                    risk_data = {
+                        'ISIN': note.get('isin', 'No ISIN'),
+                        'Product': product_type,
+                        'Underlying': u['underlying_ticker'],
+                        'Current': u['last_close_price'],
+                        'KI Barrier': u['ki_price'],
+                        '% vs KI': pct_above_ki,
+                        'Days to Maturity': days_to_maturity,
+                        'KI Date': ki_determination,
+                        'Final Val': note['final_valuation_date']
+                    }
+                    
+                    # Categorize risk
+                    if pct_above_ki <= 0:
+                        # Already breached!
+                        risk_data['Risk Level'] = '🔴 BREACHED'
+                        ki_breached.append(risk_data)
+                    elif 0 < pct_above_ki <= 5 and days_to_maturity <= 30:
+                        # Close to breach and near maturity
+                        risk_data['Risk Level'] = '🟠 HIGH RISK'
+                        ki_near_breach.append(risk_data)
             
-            if ki_risk_notes:
-                st.warning(f"⚠️ Found {len(ki_risk_notes)} underlyings at KI risk!")
+            # Display breached KI first (most critical)
+            if ki_breached:
+                st.error(f"🔴 CRITICAL: {len(ki_breached)} underlyings AT OR BELOW KI barrier!")
                 
-                df_risk = pd.DataFrame(ki_risk_notes)
-                df_risk = df_risk.sort_values('% Above KI')
+                df_breached = pd.DataFrame(ki_breached)
+                df_breached = df_breached.sort_values('% vs KI')
                 
                 # Format for display
-                df_risk['Current Price'] = df_risk['Current Price'].apply(lambda x: f"${x:.2f}")
-                df_risk['KI Price'] = df_risk['KI Price'].apply(lambda x: f"${x:.2f}")
-                df_risk['% Above KI'] = df_risk['% Above KI'].apply(lambda x: f"{x:.2f}%")
+                df_breached['Current'] = df_breached['Current'].apply(lambda x: f"${x:.2f}")
+                df_breached['KI Barrier'] = df_breached['KI Barrier'].apply(lambda x: f"${x:.2f}")
+                df_breached['% vs KI'] = df_breached['% vs KI'].apply(lambda x: f"{x:.2f}%")
                 
-                st.dataframe(df_risk, use_container_width=True, hide_index=True)
+                st.dataframe(df_breached[['ISIN', 'Product', 'Underlying', 'Current', 'KI Barrier', 
+                                         '% vs KI', 'Days to Maturity', 'KI Date']], 
+                           use_container_width=True, hide_index=True)
                 
-                st.caption("💡 These underlyings are dangerously close to KI barriers. Monitor closely!")
-            else:
-                st.success("✅ No immediate KI risks detected")
+                st.caption("🚨 These underlyings have ALREADY breached KI barrier! Check if KI event should be recorded.")
+            
+            # Display near-breach risks
+            if ki_near_breach:
+                st.warning(f"🟠 WARNING: {len(ki_near_breach)} underlyings within 5% of KI (< 30 days to maturity)")
+                
+                df_near = pd.DataFrame(ki_near_breach)
+                df_near = df_near.sort_values('% vs KI')
+                
+                # Format for display
+                df_near['Current'] = df_near['Current'].apply(lambda x: f"${x:.2f}")
+                df_near['KI Barrier'] = df_near['KI Barrier'].apply(lambda x: f"${x:.2f}")
+                df_near['% vs KI'] = df_near['% vs KI'].apply(lambda x: f"{x:.2f}%")
+                
+                st.dataframe(df_near[['ISIN', 'Product', 'Underlying', 'Current', 'KI Barrier', 
+                                     '% vs KI', 'Days to Maturity', 'KI Date']], 
+                           use_container_width=True, hide_index=True)
+                
+                st.caption("⚠️ Monitor these underlyings closely - approaching KI barrier!")
+            
+            # All clear
+            if not ki_breached and not ki_near_breach:
+                st.success("✅ No KI risks detected")
+                st.caption("All active notes are well above KI barriers or have sufficient time to maturity")
             
             # === SECTION 5: RETURN ESTIMATE ===
             st.markdown("---")
