@@ -196,6 +196,34 @@ def check_ki_barrier_phoenix(note: Dict, underlyings: List[Dict], today: date = 
         return False, None, f"KI not triggered: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} > KI ${worst_underlying['ki_price']:.2f}"
 
 
+def check_ki_barrier_ben(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str, str]:
+    """
+    Check KI for BEN (Bonus Enhanced Note) products
+    
+    BEN KI Logic: Daily monitoring - ANY ONE underlying below KI barrier
+    """
+    if today is None:
+        today = date.today()
+    
+    # BEN has Daily KI monitoring (not EKI)
+    if note['current_status'] not in ['Alive', 'Not Observed Yet']:
+        return False, None, "Note not in observation period"
+    
+    # Get underlyings with prices
+    underlyings_with_prices = [u for u in underlyings 
+                               if u.get('last_close_price') and u.get('ki_price')]
+    
+    if not underlyings_with_prices:
+        return False, None, "No KI price data"
+    
+    # Check if any underlying below KI barrier (Daily monitoring)
+    for u in underlyings_with_prices:
+        if u['last_close_price'] < u['ki_price']:
+            return True, u['underlying_ticker'], f"BEN KI: {u['underlying_ticker']} at ${u['last_close_price']:.2f} < KI ${u['ki_price']:.2f}"
+    
+    return False, None, "No KI event"
+
+
 def check_ki_barrier(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str, str]:
     """
     Check KI barrier - routes to product-specific logic
@@ -207,6 +235,8 @@ def check_ki_barrier(note: Dict, underlyings: List[Dict], today: date = None) ->
     
     if product_type == 'Phoenix':
         return check_ki_barrier_phoenix(note, underlyings, today)
+    elif product_type == 'BEN':
+        return check_ki_barrier_ben(note, underlyings, today)
     else:
         # FCN and other products use FCN logic (ANY ONE underlying)
         return check_ki_barrier_fcn(note, underlyings, today)
@@ -315,6 +345,58 @@ def check_conversion_phoenix(note: Dict, underlyings: List[Dict], today: date = 
         return False, f"Cash settlement: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} >= Put Strike ${worst_underlying['strike_price']:.2f}"
 
 
+def check_conversion_ben(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
+    """
+    Check conversion for BEN products
+    
+    BEN Conversion Logic:
+    - Only on Final Valuation Date
+    - Must be Knocked In (Daily KI occurred)
+    - WPS < Strike Price (88% level)
+    - Convert at Strike Price
+    """
+    if today is None:
+        today = date.today()
+    
+    # Must be Knocked In first
+    if note['current_status'] != 'Knocked In':
+        return False, "Not a Knocked In note"
+    
+    # Only check on final valuation date
+    from datetime import datetime
+    try:
+        final_val = datetime.strptime(note['final_valuation_date'], '%Y-%m-%d').date()
+        if today != final_val:
+            return False, "Conversion only checked on final valuation date"
+    except:
+        return False, "Invalid final valuation date"
+    
+    # Find worst performing underlying
+    underlyings_with_prices = [u for u in underlyings 
+                               if u.get('last_close_price') and u.get('strike_price') and u.get('spot_price')]
+    
+    if not underlyings_with_prices:
+        return False, "No underlyings with complete price data"
+    
+    worst_performance = float('inf')
+    worst_underlying = None
+    
+    for u in underlyings_with_prices:
+        performance = u['last_close_price'] / u['spot_price']
+        if performance < worst_performance:
+            worst_performance = performance
+            worst_underlying = u
+    
+    if not worst_underlying:
+        return False, "Could not determine worst performing share"
+    
+    # BEN: Check if WPS < Strike (88% level)
+    if worst_underlying['last_close_price'] < worst_underlying['strike_price']:
+        return True, f"BEN Converted: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} < Strike ${worst_underlying['strike_price']:.2f}"
+    else:
+        return False, f"Cash settlement: WPS {worst_underlying['underlying_ticker']} at ${worst_underlying['last_close_price']:.2f} >= Strike ${worst_underlying['strike_price']:.2f}"
+
+
 def check_conversion(note: Dict, underlyings: List[Dict], today: date = None) -> Tuple[bool, str]:
     """
     Check conversion - routes to product-specific logic
@@ -326,6 +408,8 @@ def check_conversion(note: Dict, underlyings: List[Dict], today: date = None) ->
     
     if product_type == 'Phoenix':
         return check_conversion_phoenix(note, underlyings, today)
+    elif product_type == 'BEN':
+        return check_conversion_ben(note, underlyings, today)
     else:
         return check_conversion_fcn(note, underlyings, today)
 

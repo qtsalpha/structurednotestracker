@@ -23,7 +23,7 @@ from payment_date_generator import generate_payment_dates, format_dates_for_stor
 from auth import check_password, show_logout_button
 from export_utils import prepare_notes_for_export, export_to_csv, export_to_excel, get_export_filename, export_notes_with_underlyings
 from import_utils import validate_excel_columns, parse_excel_to_notes, get_excel_template_dataframe
-from excel_templates import get_fcn_template, get_phoenix_template
+from excel_templates import get_fcn_template, get_phoenix_template, get_ben_template
 from barrier_checker import check_all_barriers
 import time
 
@@ -586,7 +586,7 @@ elif page == "Add New Note":
         with col1:
             product_type = st.selectbox(
                 "Type of Structured Product *",
-                ["FCN", "WOFCN", "ACCU", "DECU", "Phoenix", "DCN", "WOBEN", "TWINWIN"]
+                ["FCN", "WOFCN", "Phoenix", "BEN", "ACCU", "DECU", "DCN", "WOBEN", "TWINWIN"]
             )
         with col2:
             isin = st.text_input("ISIN", placeholder="e.g., XS3039666410")
@@ -796,7 +796,7 @@ elif page == "Import from Excel":
     st.subheader("📄 Step 1: Download Template")
     st.write("Choose template based on product type:")
     
-    col1, col2, col3 = st.columns([1, 1, 2])
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         # FCN Template
@@ -811,6 +811,9 @@ elif page == "Import from Excel":
             use_container_width=True,
             help="For FCN, WOFCN, ACCU, DECU products"
         )
+        st.caption("**FCN/WOFCN:**")
+        st.caption("✅ Simple barriers")
+        st.caption("✅ Regular coupons")
     
     with col2:
         # Phoenix Template
@@ -825,16 +828,26 @@ elif page == "Import from Excel":
             use_container_width=True,
             help="For Phoenix/Autocall products with memory coupons"
         )
+        st.caption("**Phoenix/Autocall:**")
+        st.caption("✅ Step-down KO")
+        st.caption("✅ Memory coupons")
     
     with col3:
-        st.caption("**FCN Template includes:**")
-        st.caption("✅ Simple KO/KI barriers")
-        st.caption("✅ Regular coupon schedule")
-        st.caption("")
-        st.caption("**Phoenix Template includes:**")
-        st.caption("✅ Step-down KO barriers")
-        st.caption("✅ Memory coupon rates")
-        st.caption("✅ Coupon barrier field")
+        # BEN Template
+        ben_template = get_ben_template()
+        ben_excel = export_to_excel(ben_template, sheet_name="BEN Template")
+        
+        st.download_button(
+            label="📥 BEN Template",
+            data=ben_excel,
+            file_name="ben_import_template.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help="For BEN/Booster products with upside participation"
+        )
+        st.caption("**BEN/Booster:**")
+        st.caption("✅ No coupons")
+        st.caption("✅ Upside participation")
     
     st.markdown("---")
     
@@ -1392,7 +1405,7 @@ elif page == "Edit Note":
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    product_types = ["FCN", "WOFCN", "ACCU", "DECU", "Phoenix", "DCN", "WOBEN", "TWINWIN"]
+                    product_types = ["FCN", "WOFCN", "Phoenix", "BEN", "ACCU", "DECU", "DCN", "WOBEN", "TWINWIN"]
                     current_product_idx = product_types.index(note['type_of_structured_product']) if note['type_of_structured_product'] in product_types else 0
                     product_type = st.selectbox("Type of Structured Product *", product_types, index=current_product_idx)
                 with col2:

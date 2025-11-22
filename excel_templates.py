@@ -6,6 +6,60 @@ Separate templates for FCN and Phoenix notes
 import pandas as pd
 
 
+def get_ben_template() -> pd.DataFrame:
+    """
+    Excel template for BEN (Bonus Enhanced Note) products
+    
+    BEN Features:
+    - No coupons
+    - Boosted upside participation (capped)
+    - Capital protection if no KI
+    - Daily KI monitoring
+    - Strike at 88% for conversion
+    """
+    template_data = {
+        'customer_name': ['PT', 'SU LEI'],
+        'custodian_bank': ['RBC', 'Barclays'],
+        'type_of_structured_product': ['BEN', 'BEN'],
+        'notional_amount': [2000000, 1000000],
+        'isin': ['XS3135926858', 'XS3135926859'],
+        'trade_date': ['2025-09-26', '2025-09-27'],
+        'issue_date': ['2025-10-10', '2025-10-11'],
+        'observation_start_date': ['2025-09-26', '2025-09-27'],
+        'final_valuation_date': ['2026-01-12', '2026-01-13'],
+        'coupon_payment_dates': [None, None],  # BEN has no coupons
+        'coupon_per_annum': [0, 0],  # No coupons
+        'ko_type': [None, None],  # BEN has no KO (no early redemption)
+        'ki_type': ['Daily', 'Daily'],  # BEN always has Daily KI
+        # Underlying 1
+        'underlying_1_ticker': ['NEM UN', 'NVDA UW'],
+        'underlying_1_spot_price': [50.00, 186.51],  # Initial Price (100%)
+        'underlying_1_strike_price': [44.00, 164.13],  # Strike for conversion (88%)
+        'underlying_1_ki_price': [39.00, 145.48],  # KI Barrier (78%)
+        'underlying_1_last_close_price': [None, None],
+        # Underlying 2
+        'underlying_2_ticker': ['B UN', 'META UW'],
+        'underlying_2_spot_price': [45.00, 608.84],
+        'underlying_2_strike_price': [39.60, 535.78],  # 88%
+        'underlying_2_ki_price': [35.10, 474.89],  # 78%
+        'underlying_2_last_close_price': [None, None],
+        # Underlying 3 (optional)
+        'underlying_3_ticker': [None, None],
+        'underlying_3_spot_price': [None, None],
+        'underlying_3_strike_price': [None, None],
+        'underlying_3_ki_price': [None, None],
+        'underlying_3_last_close_price': [None, None],
+        # Underlying 4 (optional)
+        'underlying_4_ticker': [None, None],
+        'underlying_4_spot_price': [None, None],
+        'underlying_4_strike_price': [None, None],
+        'underlying_4_ki_price': [None, None],
+        'underlying_4_last_close_price': [None, None],
+    }
+    
+    return pd.DataFrame(template_data)
+
+
 def get_fcn_template() -> pd.DataFrame:
     """
     Excel template for FCN products
